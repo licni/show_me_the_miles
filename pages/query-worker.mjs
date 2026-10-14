@@ -1,4 +1,4 @@
-import {createModelLoader} from './model-loader.mjs';
+import {createModelLoader} from './model-loader.mjs?v=shards-2';
 import {createPagesAPI} from './query-api.mjs';
 const api=createPagesAPI(createModelLoader());
 self.onmessage=async({data})=>{

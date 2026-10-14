@@ -1,4 +1,4 @@
-import {apiFetch} from './pages/client.mjs';
+import {apiFetch} from './pages/client.mjs?v=shards-2';
 import {tm,ll,formatM} from './coordinates.mjs';
 import {recognizeInput,offsetLocation,createLiveTracker} from './location-tools.mjs';
 import {exportMapImage} from './map-export.mjs';

@@ -1,0 +1,141 @@
+{
+  "carriagewayMarginMeters": 121,
+  "ramps": [
+    {
+      "road": "台1",
+      "id": "axis-ramp-0",
+      "inputCount": 519,
+      "retainedCount": 4,
+      "removedCount": 515,
+      "keptIndices": [
+        102,
+        113,
+        114,
+        141
+      ],
+      "bytesBefore": 204948,
+      "bytesAfter": 5339
+    },
+    {
+      "road": "台1",
+      "id": "axis-ramp-1",
+      "inputCount": 519,
+      "retainedCount": 5,
+      "removedCount": 514,
+      "keptIndices": [
+        249,
+        393,
+        394,
+        395,
+        396
+      ],
+      "bytesBefore": 205522,
+      "bytesAfter": 5781
+    },
+    {
+      "road": "台17",
+      "id": "axis-ramp-2",
+      "inputCount": 141,
+      "retainedCount": 7,
+      "removedCount": 134,
+      "keptIndices": [
+        25,
+        26,
+        68,
+        69,
+        82,
+        83,
+        84
+      ],
+      "bytesBefore": 45601,
+      "bytesAfter": 2868
+    },
+    {
+      "road": "台26",
+      "id": "axis-ramp-4",
+      "inputCount": 246,
+      "retainedCount": 3,
+      "removedCount": 243,
+      "keptIndices": [
+        70,
+        161,
+        162
+      ],
+      "bytesBefore": 100138,
+      "bytesAfter": 1802
+    },
+    {
+      "road": "台88",
+      "id": "official-ramp-11",
+      "inputCount": 36,
+      "retainedCount": 4,
+      "removedCount": 32,
+      "keptIndices": [
+        17,
+        18,
+        22,
+        23
+      ],
+      "bytesBefore": 52805,
+      "bytesAfter": 17072
+    },
+    {
+      "road": "台88",
+      "id": "official-ramp-12",
+      "inputCount": 36,
+      "retainedCount": 4,
+      "removedCount": 32,
+      "keptIndices": [
+        16,
+        17,
+        18,
+        19
+      ],
+      "bytesBefore": 52336,
+      "bytesAfter": 6520
+    },
+    {
+      "road": "台88",
+      "id": "official-ramp-13",
+      "inputCount": 36,
+      "retainedCount": 4,
+      "removedCount": 32,
+      "keptIndices": [
+        17,
+        18,
+        22,
+        23
+      ],
+      "bytesBefore": 52349,
+      "bytesAfter": 16616
+    },
+    {
+      "road": "台88",
+      "id": "official-ramp-15",
+      "inputCount": 36,
+      "retainedCount": 2,
+      "removedCount": 34,
+      "keptIndices": [
+        17,
+        18
+      ],
+      "bytesBefore": 52717,
+      "bytesAfter": 3622
+    },
+    {
+      "road": "台88",
+      "id": "official-ramp-16",
+      "inputCount": 36,
+      "retainedCount": 4,
+      "removedCount": 32,
+      "keptIndices": [
+        16,
+        17,
+        18,
+        19
+      ],
+      "bytesBefore": 52416,
+      "bytesAfter": 6600
+    }
+  ]
+}

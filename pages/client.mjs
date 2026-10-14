@@ -7,7 +7,7 @@ function failAll(error){
 }
 function getWorker(){
  if(worker)return worker;
- worker=new Worker(new URL('./query-worker.mjs',import.meta.url),{type:'module'});
+ worker=new Worker(new URL('./query-worker.mjs?v=shards-2',import.meta.url),{type:'module'});
  worker.onmessage=({data})=>{
   const task=finish(data.id);if(!task)return;
   if(data.error)task.reject(Error(data.error));
