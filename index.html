@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#163e3d">
+  <title>SHOW ME THE MILESTONE 樁號查詢</title>
+  <link rel="stylesheet" href="vendor/leaflet.css">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <a class="brand" href="./" aria-label="SHOW ME THE MILESTONE 樁號查詢"><span class="brand-english"><span class="brand-kicker">SHOW ME THE</span><strong>MILESTONE</strong></span><span class="brand-chinese">樁號查詢</span></a>
+    <span class="scope">規設小秘密</span>
+  </header>
+  <main>
+    <aside aria-label="道路里程查詢">
+      <div class="result-panel" aria-label="查詢結果">
+        <div id="message" role="status" aria-live="polite" hidden></div>
+        <div id="idle" class="empty-result"><span class="result-label">目前樁號</span><strong>尚未查詢</strong><p>貼上位置文字、按下定位，或點選地圖查詢。</p></div>
+        <section id="result" aria-live="polite" hidden></section>
+      </div>
+      <section class="tool" aria-label="查詢操作">
+        <div class="quick-actions">
+          <button id="gps" class="primary" disabled><span aria-hidden="true">◎</span> 定位樁號</button>
+          <button id="live-toggle" class="secondary" disabled aria-pressed="false">顯示GPS藍點</button>
+        </div>
+        <div id="live-options" hidden>
+          <label class="check-row"><input id="live-follow" type="checkbox" checked> 地圖跟隨位置</label>
+          <p id="live-status" class="hint" role="status"></p>
+        </div>
+        <form id="location-form">
+          <label for="location-text">貼上位置、樁號或路段</label>
+          <textarea id="location-text" rows="3" maxlength="12000" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="search" aria-describedby="location-hint" placeholder="台27線59K+223 順樁150公尺&#10;縣185 34.544 到 35.200&#10;或貼座標 22.49,120.62；可含前後敘述"></textarea>
+          <button id="location-identify" class="primary" disabled>辨識並定位</button>
+        </form>
+        <p id="location-hint" class="hint" role="status">貼上即辨識；單樁定位、起迄標段；順逆樁未附距離時表示側別。</p>
+        <button id="location-all" class="secondary" hidden>全部標記在地圖</button>
+        <div id="location-candidates" class="alternatives"></div>
+        <details id="location-examples">
+          <summary>可以貼哪些寫法？</summary>
+          <p>台27線59K+223 或 台27 59.223：定位單一樁號。</p>
+          <p>縣185 34.544 到 35.200<br>縣185 34+544～35+200<br>縣185 34k544 至 35K200<br>縣１８５ ３４Ｋ＋５４４－３５Ｋ＋２００</p>
+          <p>34.544、34+544、34k544、３４Ｋ＋５４４，都會辨識為 34K+544。</p>
+          <p>台1線392K+406（順樁向）：單點＋順樁向側。台1線392K+406～393K+500（順樁向）：起迄路段＋順樁向側。側別為示意，非實際車道位置。</p>
+          <p>台27線59K+223 順樁150公尺：59K+223 → 59K+373。逆樁150公尺：59K+223 → 59K+073。前後各100公尺也可。</p>
+          <p>經緯度：22.49,120.62<br>TWD97：X 195183.575 Y 2506266.517</p>
+          <p>可貼整段來信，保留道路與里程或座標即可；多個位置／路段會列出供選擇。Enter辨識，Shift＋Enter換行。</p>
+        </details>
+        <details id="manual-entry">
+          <summary>手動選擇</summary>
+          <details id="coordinate-entry">
+            <summary>輸入 TWD97 座標</summary>
+            <form id="position-form">
+              <div class="two">
+                <label for="x">X 座標<input id="x" type="number" step="any" inputmode="decimal" required></label>
+                <label for="y">Y 座標<input id="y" type="number" step="any" inputmode="decimal" required></label>
+              </div>
+              <div class="form-bottom"><span class="hint">TWD97／121°分帶</span><button class="secondary" id="query" disabled>查詢座標</button></div>
+            </form>
+          </details>
+          <details id="mile-manual">
+            <summary>道路與單一樁號</summary>
+          <label class="sr-only" for="road">查詢道路</label>
+          <select id="road" disabled><option value="">請選擇道路</option></select>
+          <form id="mile-form" class="mile-form">
+            <div class="mile-parts" role="group" aria-label="里程樁號">
+              <label class="sr-only" for="stake-km">公里</label>
+              <input id="stake-km" inputmode="numeric" pattern="[0-9]{1,3}" placeholder="公里" title="公里請輸入0至600的整數；兩欄留白查最小資料里程，只留此欄空白為0" aria-describedby="mile-hint" autocomplete="off" enterkeyhint="next">
+              <span class="mile-separator" aria-hidden="true">K+</span>
+              <label class="sr-only" for="stake-m">公尺</label>
+              <input id="stake-m" inputmode="numeric" pattern="[0-9]{1,3}" placeholder="公尺" title="公尺請輸入0至999的整數；兩欄留白查最小資料里程，只留此欄空白為000" aria-describedby="mile-hint" autocomplete="off" enterkeyhint="search">
+            </div>
+            <button class="secondary" id="reverse" disabled>查詢樁號</button>
+          </form>
+          <p id="mile-hint" class="hint">兩欄留白，查詢此道路最小資料里程。</p>
+          </details>
+          <details id="segment-manual">
+            <summary>起迄里程路段</summary>
+            <form id="segment-form">
+              <label for="segment-road">道路<select id="segment-road" disabled><option value="">請選擇道路</option></select></label>
+              <div class="two"><label for="segment-from">起點<input id="segment-from" placeholder="8K+111" required></label><label for="segment-to">終點<input id="segment-to" placeholder="9K+356" required></label></div>
+              <button id="segment-draw" class="secondary" disabled>標記此路段</button>
+            </form>
+          </details>
+          <details class="extra-tool" id="offset-tool">
+            <summary>順逆樁路段／前後範圍</summary>
+            <form id="offset-form">
+              <label for="offset-base">基準樁號<input id="offset-base" placeholder="台27線59K+223" required></label>
+              <div class="two"><label for="offset-direction">方向<select id="offset-direction"><option value="forward">順樁向（里程增加）</option><option value="backward">逆樁向（里程減少）</option><option value="around">前後各</option></select></label><label for="offset-distance">公尺<input id="offset-distance" inputmode="numeric" pattern="[0-9]+" placeholder="150" required></label></div>
+              <button id="offset-go" class="secondary" disabled>標記此路段</button>
+            </form>
+            <p id="offset-note" class="hint" role="status">由基準樁號沿順／逆樁向標記整個路段，不代表實際管道長度。也可直接貼「台27線59K+223 順樁向150公尺」。</p>
+          </details>
+        </details>
+        <details id="multi-panel" hidden>
+          <summary id="multi-summary">地圖標記</summary>
+          <div class="compact-actions"><button id="multi-fit" type="button">查看全部</button><button id="multi-clear" type="button">清除標記</button></div>
+          <div id="multi-list" class="alternatives"></div>
+        </details>
+        <details class="extra-tool" id="coverage-tool">
+          <summary>道路資料範圍與缺口</summary>
+          <label for="coverage-road">道路<select id="coverage-road" disabled><option value="">請選擇道路</option></select></label>
+          <p id="coverage-status" class="hint" role="status">選擇道路，查看原樁起迄及無法連續標記的區間。</p>
+          <div id="coverage-result"></div>
+        </details>
+      </section>
+    </aside>
+    <section class="map-wrap" aria-label="道路對照地圖">
+      <div id="map"></div>
+      <label class="sr-only" for="basemap">地圖底圖</label>
+      <select id="basemap" aria-label="地圖底圖" disabled>
+        <option value="street">街道圖</option>
+        <option value="photo">正射影像</option>
+        <option value="hybrid">影像＋路名</option>
+      </select>
+      <button id="load-roads" type="button" title="取得畫面內參考線" aria-label="取得畫面內參考線" disabled>參考線</button>
+      <div id="road-status" hidden><p id="road-status-text" role="status" aria-live="polite"></p><button id="road-status-close" type="button" aria-label="關閉參考線提示">×</button></div>
+      <details id="export-menu">
+        <summary id="export-summary" aria-label="匯出示意圖">匯出 ▾</summary>
+        <div class="export-options">
+          <button id="export-map" type="button">JPG（較小）</button>
+          <button id="export-png" type="button">PNG（無損）</button>
+        </div>
+      </details>
+      <button id="home" title="回到屏東全覽">全覽</button>
+    </section>
+  </main>
+  <footer>Designed by Super GG</footer>
+  <script src="vendor/leaflet.js"></script>
+  <script type="module" src="app.mjs"></script>
+</body>
+</html>
