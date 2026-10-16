@@ -70,6 +70,15 @@ node scripts/build-shards.mjs ../previous-release/data ./data
 node scripts/test-shards.mjs ../previous-release
 ```
 
+文字辨識與樁號準確度檢查（只讀本機資料）：
+
+```sh
+node scripts/test-parser.mjs
+node scripts/test-accuracy.mjs
+```
+
+`test-accuracy.mjs` 以原樁座標反查樁號，並抽樣「樁號→位置→樁號」來回比對；也會列出位置與前後樁號矛盾、不直接採用的來源樁。
+
 檢查範圍依修改內容決定：計算變更比對樁號、交會候選、端點與缺口結果；資料變更檢查 JSON／gzip 內容、雜湊、索引與跨片查詢；介面變更檢查電腦與手機操作。文件修改檢查文字與連結即可。
 
 發布後以 GitHub Pages 部署結果及實際網址確認上線狀態。此儲存庫與 Cloudflare 版本分開維護。

@@ -7,7 +7,10 @@ export function parseStake(value){
  if((m=s.match(/^(\d{1,3})\.(\d{1,3})\s*(?:km|k|公里)?$/i)))return Math.round(Number(m[1]+'.'+m[2])*1000);
  throw Error('樁號請輸入 8K+111、8+111 或 8.111 公里。');
 }
-const stakeRE=/(?<![\d.])(?:\d{1,3}\.\d{1,3}\s*(?:km|k|公里)?|\d{1,3}\s*(?:k(?:m)?|公里)\s*(?:\+\s*\d{1,3}|\d{1,3})?\s*(?:m|公尺|米)?|\d{1,3}\s*\+\s*\d{1,3}\s*(?:m|公尺|米)?)(?![\d.+])/gi;
+export const roadPrefix='台|省道|縣道|縣|屏';
+// A decimal followed by a length unit is a measurement (護欄高1.2公尺), not a stake.
+const stakeRE=/(?<![\d.])(?:\d{1,3}\.\d{1,3}(?!\s*(?:公尺|米|公分|cm|m(?![a-z])))\s*(?:km|k|公里)?|\d{1,3}\s*(?:k(?:m)?|公里)\s*(?:\+\s*\d{1,3}|\d{1,3})?\s*(?:m|公尺|米)?|\d{1,3}\s*\+\s*\d{1,3}\s*(?:m|公尺|米)?)(?![\d.+])/gi;
+const withoutLengths=t=>t.replace(/\d+(?:\.\d+)?\s*(?:公尺|米|公分|cm|m(?![a-z]))/gi,' ');
 export function recognizeLocations(text,roads){return recognizeSegments(text,roads,{allowPoints:true});}
 export function recognizeSegments(text,roads,{allowPoints=false}={}){
  const s=normalizeText(text),known=new Set(roads),warnings=[],routes=[];
@@ -26,7 +29,7 @@ export function recognizeSegments(text,roads,{allowPoints=false}={}){
   }
   if(allowPoints){
    let rest=chunk;for(const a of [...stakes].reverse())rest=rest.slice(0,a.start)+' '.repeat(a.end-a.start)+rest.slice(a.end);
-   if(/\d\s*(?:k|公里|\+)/i.test(rest))warnings.push(`${route.road} 尚有格式不完整的樁號，請確認。`);
+   if(/\d\s*(?:k|公里|\+)/i.test(withoutLengths(rest)))warnings.push(`${route.road} 尚有格式不完整的樁號，請確認。`);
   }
   // Repeat the road at the second endpoint: 屏46 8K+111 至 屏46 9K+356.
   if(stakes.length===1&&routes[i+1]?.road===route.road){
@@ -53,7 +56,7 @@ export function recognizeSegments(text,roads,{allowPoints=false}={}){
   if(stakes.length===1&&allowPoints){
    const a=stakes[0],before=chunk.slice(0,a.start),after=chunk.slice(a.end),rest=before+' '+after;
    // Do not reinterpret an incomplete range or a partially valid stake as a point.
-   if(/(?:到|至|迄|~|→|-)\s*$/.test(before)||/^\s*(?:到|至|迄|~|→|-)(?:\s|$|\d)/.test(after)||/\d\s*(?:k|公里|\+|\.)/i.test(rest)){
+   if(/(?:到|至|迄|~|→|-)\s*$/.test(before)||/^\s*(?:到|至|迄|~|→|-)(?:\s|$|\d)/.test(after)||/\d\s*(?:k|公里|\+|\.)/i.test(withoutLengths(rest))){
     warnings.push(`${route.road} 里程格式或起迄不完整，請確認。`);continue;
    }
    const key=[route.road,a.m].join(':');

@@ -1,4 +1,4 @@
-import {normalizeText,recognizeLocations} from './segment-parser.mjs';
+import {normalizeText,recognizeLocations,roadPrefix} from './segment-parser.mjs';
 import {tm} from './coordinates.mjs';
 export function offsetLocation(point,distance,direction){
  if(point?.kind!=='point'||!Number.isInteger(distance)||distance<=0||distance>50000)throw Error('請提供單一樁號與1～50000公尺的整數距離。');
@@ -6,47 +6,61 @@ export function offsetLocation(point,distance,direction){
  const from=direction==='around'?point.m-distance:point.m;
  const to=direction==='backward'?point.m-distance:point.m+distance;
  if(Math.min(from,to)<0||Math.max(from,to)>600000)throw Error('計算結果超出0～600公里，不會自動截短。');
- if(direction==='around'){
-  if(to-from>50000)throw Error('前後範圍合計不可超過50公里。');
-  return {key:`${point.road}:${from}:${to}`,road:point.road,from,to};
- }
+ if(Math.abs(to-from)>50000)throw Error('前後範圍合計不可超過50公里。');
  return {key:`${point.road}:${from}:${to}`,road:point.road,from,to};
 }
+const roadMentions=s=>[...s.matchAll(new RegExp(`(?:${roadPrefix})\\s*\\d{1,3}`,'g'))];
+// 順樁150公尺, 往大樁號方向延伸1.5公里, 前後各約100m.
+const distanceRE=/(?:往)?(大樁號|小樁號|順樁|逆樁|前後各)(?:方向|向)?\s*(?:延伸|約)*\s*(\d+(?:\.\d+)?)\s*(公尺|米|公里|km|m)(?![a-z])/i;
+// Google Maps style 22°29'24.0"N and 22.49N / N22.49 become plain decimal degrees.
+function plainDegrees(s){
+ return s.replace(/(\d{1,3})\s*[°度]\s*(\d{1,2}(?:\.\d+)?)\s*['′分](?:\s*(\d{1,2}(?:\.\d+)?)\s*(?:"|″|′′|''|秒)?)?\s*[NE]?(?![a-z])/gi,(all,d,m,sec)=>' '+(Number(d)+Number(m)/60+Number(sec||0)/3600).toFixed(7)+' ')
+  .replace(/(\d{2,3}\.\d+)\s*°?\s*[NE](?![a-z])/gi,'$1 ')
+  .replace(/(?<![a-z])[NE]\s*(\d{2,3}\.\d+)/gi,' $1');
+}
 export function recognizeInput(text,roads){
- let s=normalizeText(text),coordinates=[];
+ let s=plainDegrees(normalizeText(text));const coordinates=[];
  // Separate explicitly named roads before interpreting per-road directional distances.
- const named=[...s.matchAll(/(?:台|省道|縣道|縣|屏)\s*\d{1,3}/g)].filter((m,i)=>!i||!/(?:到|至|迄|~|→|-)\s*$/.test(s.slice(0,m.index)));
+ const named=roadMentions(s).filter((m,i)=>!i||!/(?:到|至|迄|~|→|-)\s*$/.test(s.slice(0,m.index)));
  if(named.length>1&&/順樁|逆樁|大樁號|小樁號|前後各/.test(s)){
   const parts=named.map((m,i)=>recognizeInput(s.slice(i?m.index:0,named[i+1]?.index??s.length),roads));
   const candidates=[];for(const p of parts)for(const c of p.candidates)if(!candidates.some(a=>a.key===c.key))candidates.push(c);
   return {candidates,warnings:[...new Set(parts.flatMap(p=>p.warnings))]};
  }
- const number='[+-]?\\d{1,7}(?:\\.\\d{1,8})?';
- const pair=new RegExp(`(?<![\\d.+])(?:(X|經度|緯度|lon(?:gitude)?|lat(?:itude)?)\\s*[:=]?\\s*)?(${number})\\s*(?:[,，、;；]|\\s)\\s*(?:(Y|經度|緯度|lon(?:gitude)?|lat(?:itude)?)\\s*[:=]?\\s*)?(${number})(?![\\d.+])`,'gi');
- s=s.replace(pair,(all,labelA,a,labelB,b)=>{
-  a=Number(a);b=Number(b);let xy,display;
+ const number='\\d{1,7}(?:\\.\\d{1,8})?',label='X|Y|經度|緯度|東經|北緯|lon(?:gitude)?|lng|lat(?:itude)?';
+ const pair=new RegExp(`(?<![\\d.+])(?:(${label})\\s*[:=]?\\s*)?(${number})\\s*(?:[,、;]|\\s)\\s*(?:(${label})\\s*[:=]?\\s*)?(${number})(?![\\d.+])`,'gi');
+ const isLat=l=>/^(緯度|北緯|lat)/i.test(l),isLon=l=>/^(經度|東經|lon|lng)/i.test(l);
+ let rest='',last=0;
+ for(let m;(m=pair.exec(s));){
+  const [all,labelA,,labelB]=m,a=Number(m[2]),b=Number(m[4]);let xy,display;
   if(a>=100000&&a<=400000&&b>=2300000&&b<=3000000){xy=[a,b];display=`TWD97 X ${a}／Y ${b}`;}
   else if(a>=120&&a<=121.5&&b>=21.7&&b<=23){xy=tm(a,b);display=`經度 ${a}／緯度 ${b}`;}
   else if(b>=120&&b<=121.5&&a>=21.7&&a<=23){xy=tm(b,a);display=`緯度 ${a}／經度 ${b}`;}
-  if(!xy)return all;
   // Explicit labels must agree with the magnitude; do not silently swap X/Y or lat/lon.
-  if(labelA&&(/^(緯度|lat)/i.test(labelA)?a>90:/^(經度|lon)/i.test(labelA)?a<90:/^x$/i.test(labelA)?a<100000:false))return all;
-  if(labelB&&(/^(緯度|lat)/i.test(labelB)?b>90:/^(經度|lon)/i.test(labelB)?b<90:/^y$/i.test(labelB)?b<2300000:false))return all;
-  const key='xy:'+xy.map(v=>v.toFixed(3)).join(':');if(!coordinates.some(c=>c.key===key))coordinates.push({kind:'coordinate',key,xy,label:display});return ' ';
- });
- const hasRoad=/(?:台|省道|縣道|縣|屏)\s*\d/.test(s);
- const r=hasRoad?recognizeLocations(s,roads):{candidates:[],warnings:[]};
+  const wrong=(l,v,y)=>l&&(isLat(l)?v>90:isLon(l)?v<90:/^x$/i.test(l)?v<100000:/^y$/i.test(l)?v<2300000:false);
+  // A rejected pair consumes nothing, so 392K+406 22.49,120.62 still finds the coordinate.
+  if(!xy||wrong(labelA,a)||wrong(labelB,b)){pair.lastIndex=m.index+1;continue;}
+  rest+=s.slice(last,m.index)+' ';last=m.index+all.length;
+  const key='xy:'+xy.map(v=>v.toFixed(3)).join(':');if(!coordinates.some(c=>c.key===key))coordinates.push({kind:'coordinate',key,xy,label:display});
+ }
+ s=rest+s.slice(last);
+ const directions=(s.match(/順樁|逆樁|大樁號|小樁號|前後各/g)||[]).length;
+ const direction=directions===1?s.match(distanceRE):null;
+ // The distance is not a stake: 順樁1.5公里 must not become a second mileage 1K+500.
+ const stakes=direction?s.slice(0,direction.index)+' '.repeat(direction[0].length)+s.slice(direction.index+direction[0].length):s;
+ const r=roadMentions(stakes).length?recognizeLocations(stakes,roads):{candidates:[],warnings:[]};
  if(!r.candidates.length&&!coordinates.length&&!r.warnings.length)r.warnings.push('請貼上道路＋樁號、TWD97 X／Y，或屏東地區的十進位經緯度。');
- if((s.match(/順樁|逆樁|大樁號|小樁號|前後各/g)||[]).length>1)return {candidates:coordinates,warnings:[...r.warnings,'同一基準有多個方向，請分行寫出各自的道路與基準樁號。']};
- const direction=s.match(/(?:往)?(大樁號|小樁號|順樁|逆樁)(?:方向|向)?\s*(\d+)\s*(公尺|米|m)(?![a-z])/i)||s.match(/(前後各)\s*(\d+)\s*(公尺|米|m)(?![a-z])/i);
+ if(directions>1)return {candidates:coordinates,warnings:[...r.warnings,'同一基準有多個方向，請分行寫出各自的道路與基準樁號。']};
  if(direction){
+  const value=Number(direction[2])*(/^(公里|km)$/i.test(direction[3])?1000:1),distance=Math.round(value);
   if(r.candidates.length!==1||r.candidates[0].kind!=='point'||coordinates.length)r.warnings.push('距離增減請只提供一個基準樁號。');
-  else try{r.candidates=[offsetLocation(r.candidates[0],Number(direction[2]),['大樁號','順樁'].includes(direction[1])?'forward':['小樁號','逆樁'].includes(direction[1])?'backward':'around')];}catch(e){r.warnings.push(e.message);r.candidates=[];}
+  else if(Math.abs(value-distance)>1e-6){r.warnings.push('距離請以整數公尺表示，例如「順樁向150公尺」。');r.candidates=[];}
+  else try{r.candidates=[offsetLocation(r.candidates[0],distance,['大樁號','順樁'].includes(direction[1])?'forward':['小樁號','逆樁'].includes(direction[1])?'backward':'around')];}catch(e){r.warnings.push(e.message);r.candidates=[];}
  }else if(/順樁|逆樁/.test(s)){
   const side=s.match(/(順樁|逆樁)(?:方向|向)?\s*(.*)/);
-  // A direction alone denotes a carriageway side, not a missing distance.
-  // Numbers/units immediately following it are an attempted distance and must validate.
-  if(/^(?:[:=]?\s*[+\-\d.]|公尺|米|m\b|公里|km\b)/i.test(side[2]))r.warnings.push('距離格式不完整，請使用例如「順樁向150公尺」；只指定側別可寫「（順樁向）」。');
+  // A direction alone denotes a carriageway side, not a missing distance. A number
+  // right after it is an attempted distance, unless it is a stake (順樁 59K+223).
+  if(/^(?:[:=]?\s*(?:延伸|約)?\s*[+\-\d.]|公尺|米|m\b|公里|km\b)/i.test(side[2])&&!/^[:=]?\s*\d{1,3}\s*(?:k|\+)/i.test(side[2]))r.warnings.push('距離格式不完整，請使用例如「順樁向150公尺」；只指定側別可寫「（順樁向）」。');
   else if(r.candidates.length===1&&!coordinates.length){
    const c=r.candidates[0],carriageway=side[1]==='順樁'?'forward':'backward';
    r.candidates=[{...c,side:carriageway,key:c.key+':'+carriageway}];

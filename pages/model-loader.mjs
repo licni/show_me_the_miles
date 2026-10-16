@@ -1,3 +1,5 @@
+import {plausibleExact} from '../engine/engine.mjs';
+
 const ARRAY_KEYS=['lines','centerlines','centerlineRamps','centerlineCorridors','endpointExtensions','mapLines','localIsolatedMarkers','countyBoundaries'];
 const MILEAGE_KEYS=new Set(['lines','centerlines','endpointExtensions']);
 
@@ -27,7 +29,7 @@ function selectRecords(index,query,cellSize){
   if(query.mode==='mile'){
    const m=query.start===true?markers.reduce((n,p)=>Number.isInteger(p.m)&&p.m>=0?Math.min(n,p.m):n,Infinity):query.m;
    if(typeof m!=='number'||!Number.isFinite(m))return [];
-   if(!query.side&&markers.some(p=>p.m===m))return [];
+   if(!query.side&&plausibleExact(markers,m).length)return [];
    low=m-(query.side?5:0);high=m+(query.side?5:0);
   }else{
    if(![query.from,query.to].every(v=>typeof v==='number'&&Number.isFinite(v)))return [];
