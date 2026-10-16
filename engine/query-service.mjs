@@ -8,7 +8,7 @@ import {countyNote,countyEstimateNote,countyGapEstimateNote,countyBendEstimateNo
 export function createQueryService(model){
 const publicFiles=new Set(['/','/index.html','/style.css','/app.mjs','/coordinates.mjs','/segment-parser.mjs','/location-tools.mjs','/map-export.mjs','/vendor/leaflet.js','/vendor/leaflet.css','/vendor/LEAFLET-LICENSE.txt']);
 function json(data,status=200){return new Response(JSON.stringify(data),{status,headers:{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'}});}
-const marker=p=>({road:p.road,m:p.m,xy:p.xy,sign:p.sign,date:p.date,dir:p.dir,...(p.sourceKind?{sourceKind:p.sourceKind}:{}),...(p.coordinateNote?{coordinateNote:p.coordinateNote}:{})});
+const marker=p=>({road:p.road,m:p.m,xy:p.xy,sign:p.sign,date:p.date,dir:p.dir,...(p.sourceKind?{sourceKind:p.sourceKind}:{}),...(p.coordinateNote?{coordinateNote:p.coordinateNote}:{}),...(p.corrected?{corrected:true}:{})});
 function output(r,road){
  const result={road,m:r.m,xy:r.xy,ll:ll(...r.xy),method:r.method,d:r.d??null,distance:r.distance,refs:(r.refs||[]).slice(0,2).map(a=>({marker:marker(a.marker)}))};
  if(r.marker)result.marker=marker(r.marker);

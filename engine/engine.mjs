@@ -35,7 +35,7 @@ export function plausibleExact(markers,m){
   return !near.length||near.some(o=>Math.hypot(o.xy[0]-p.xy[0],o.xy[1]-p.xy[1])<=1.5*Math.abs(o.m-m)+60);
  });
 }
-export function reverse(model,road,m){const markers=model.byRoad[road]||[],exact=plausibleExact(markers,m);if(exact.length)return exact.map(p=>({m,xy:p.xy,marker:p,method:p.sourceKind==='county50'?'來源表里程點':'官方樁位',refs:[],distance:0}));let results=[];
+export function reverse(model,road,m){const markers=model.byRoad[road]||[],exact=plausibleExact(markers,m);if(exact.length)return exact.map(p=>({m,xy:p.xy,marker:p,method:p.corrected?'修正樁位（依前後樁推估）':p.sourceKind==='county50'?'來源表里程點':'官方樁位',refs:[],distance:0}));let results=[];
  const shared=centerlineReverse(model,road,m);if(shared.length)return shared;
  for(const line of model.lines.filter(l=>l.road===road&&l.direction&&(!model.provinceAxes||isCountyLine(l)))){const a=line.anchors;let s=null;for(let i=0;i<a.length-1;i++){let b=a[i],c=a[i+1];if(m>=Math.min(b.marker.m,c.marker.m)&&m<=Math.max(b.marker.m,c.marker.m)){let slope=(c.marker.m-b.marker.m)/(c.s-b.s);if(isCountyLine(line)||(Math.abs(slope)>=.7&&Math.abs(slope)<=1.3))s=b.s+(m-b.marker.m)/slope;}}
  if(s===null&&a.length&&!isCountyLine(line)){let n=a.reduce((b,p)=>Math.abs(p.marker.m-m)<Math.abs(b.marker.m-m)?p:b);const slope=line.sourceKind==='province-linked'?(a[1].marker.m-a[0].marker.m)/(a[1].s-a[0].s):line.direction;s=n.s+(m-n.marker.m)/slope;}

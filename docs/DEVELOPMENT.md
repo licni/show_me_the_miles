@@ -77,6 +77,16 @@ node scripts/test-parser.mjs
 node scripts/test-accuracy.mjs
 ```
 
+錯置原樁的檢查與修正：
+
+```sh
+node scripts/correct-markers.mjs          # 只列出結果
+node scripts/correct-markers.mjs --write  # 寫入道路索引
+node scripts/build-shards.mjs data data /tmp/build-report.json
+```
+
+修正位置＝該里程的道路中心線位置，加上同向前後樁的側向偏移（依里程內插）；推估點與鄰樁的距離須符合里程差（±10%＋5 公尺），否則不寫入。原座標保存在樁位的 `corrected` 欄位，查詢結果顯示「修正樁位」，不視為官方樁位。取得公路局「省道里程坐標」新資料時，應優先以官方座標取代。
+
 `test-accuracy.mjs` 以原樁座標反查樁號，並抽樣「樁號→位置→樁號」來回比對；也會列出位置與前後樁號矛盾、不直接採用的來源樁。
 
 檢查範圍依修改內容決定：計算變更比對樁號、交會候選、端點與缺口結果；資料變更檢查 JSON／gzip 內容、雜湊、索引與跨片查詢；介面變更檢查電腦與手機操作。文件修改檢查文字與連結即可。

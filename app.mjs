@@ -36,9 +36,11 @@ function dot(xy,color,text,r=7){
   return L.circleMarker(latlng(ll(...xy)),{radius:r,color:'#fff',weight:2,fillColor:color,fillOpacity:1}).bindPopup(text,{autoPan:false,className:'map-point-popup',offset:[0,-12]}).addTo(selection);
 }
 const nearbyEndpoint=r=>!Number.isFinite(r.m)&&Number.isFinite(r.nearbyEndpoint?.m)?r.nearbyEndpoint:null;
-const mileageLabel=r=>Number.isFinite(r.m)?`${r.marker?'':'約'}${formatM(r.m)}`:nearbyEndpoint(r)?`最近樁號 ${formatM(r.nearbyEndpoint.m)}`:'暫無樁號';
+const exactMarker=r=>!!r.marker&&!r.marker.corrected;
+const mileageLabel=r=>Number.isFinite(r.m)?`${exactMarker(r)?'':'約'}${formatM(r.m)}`:nearbyEndpoint(r)?`最近樁號 ${formatM(r.nearbyEndpoint.m)}`:'暫無樁號';
 function resultPresentation(r,road=r.road){
   if(!Number.isFinite(r.m))return {kind:nearbyEndpoint(r)?'資料端點附近':r.notice==='gap'?'資料缺口':r.distanceKind==='endpoint'?'資料端點':'僅參考線',description:''};
+  if(r.marker?.corrected)return {kind:'修正樁位',description:'來源表此樁座標與前後樁號矛盾，改依道路中心線及同向前後樁位置推估。'};
   if(r.marker)return {kind:'資料點',description:''};
   if(r.sourceKind==='province-centerline')return {kind:r.centerlineExtrapolation?'中心線末段推估':'共用中心線推估',description:r.centerlineExtrapolation?'依同道路既有樁位校準，沿道路中心線推估末段樁號。':'雙向共用道路中心線與樁號，橫向偏移不加入里程。'};
   if(r.sourceKind==='province-ramp-estimate')return {kind:'引道對應主線推估',description:'依引道兩端對應主線里程連續內插，引道長度不另加至樁號。'};
@@ -86,7 +88,7 @@ function showRoadPicker(choices,input,keepView){
 function showResult(r,road,input=null,choices=[],keepView=false){
   exportNotes=[`${formatRoad(road)} ${mileageLabel(r)}${r.side?' · '+r.side.label+'（側別示意）':''}`,...(r.side?[r.side.note,'導航與複製連結使用原樁號位置，未含側向偏移。']:[])];
   if(Number.isFinite(r.m))$('offset-base').value=`${formatRoad(road)} ${formatM(r.m)}`;
-  const exact=!!r.marker,hasMileage=Number.isFinite(r.m),endpoint=nearbyEndpoint(r),point=r.xy,coords=ll(...point),refs=r.refs||[];
+  const exact=exactMarker(r),hasMileage=Number.isFinite(r.m),endpoint=nearbyEndpoint(r),point=r.xy,coords=ll(...point),refs=r.refs||[];
   const mileageText=mileageLabel(r);
   const notices={gap:'附近樁號資料有缺口，無法確認此處里程。',range:'此處超出里程資料範圍，顯示最近有效資料點。','reference-end':'此處位於參考線端點外，尚無可用樁號。'};
   const {kind,description}=resultPresentation(r,road);
