@@ -4,28 +4,11 @@
 import {readFile} from 'node:fs/promises';
 import {createModelLoader} from '../pages/model-loader.mjs';
 import {tm} from '../coordinates.mjs';
+import {readOfficialMarkers} from './official-csv.mjs';
 
 const [file,county='屏東縣']=process.argv.slice(2);
 if(!file)throw Error('請提供公路局里程牌 CSV 路徑。');
-const bytes=await readFile(file),text=new TextDecoder(bytes[0]===0xef&&bytes[1]===0xbb?'utf-8':'big5').decode(bytes);
-// RFC 4180: quoted fields may contain commas and line breaks (備註欄).
-function parseCSV(s){
- const rows=[];let row=[],field='',quoted=false;
- for(let i=0;i<s.length;i++){
-  const c=s[i];
-  if(quoted){if(c==='"'&&s[i+1]==='"'){field+='"';i++;}else if(c==='"')quoted=false;else field+=c;continue;}
-  if(c==='"')quoted=true;else if(c===','){row.push(field);field='';}
-  else if(c==='\n'){row.push(field.replace(/\r$/,''));rows.push(row);row=[];field='';}
-  else field+=c;
- }
- if(field||row.length){row.push(field);rows.push(row);}
- return rows;
-}
-const [head,...body]=parseCSV(text.replace(/^﻿/,'')),col=name=>{const i=head.indexOf(name);if(i<0)throw Error('CSV 缺少欄位：'+name);return i;};
-const c={road:col('公路編號'),county:col('隸屬縣市'),m:col('起點樁號'),x:col('坐標-X-TWD97'),y:col('坐標-Y-TWD97'),e:col('坐標-E-WGS84'),n:col('坐標-N-WGS84'),dir:col('牌面方向'),date:col('調查日期')};
-const stake=s=>{const m=/^(\d+)K\+(\d+)$/.exec(s.trim());return m?Number(m[1])*1000+Number(m[2]):NaN;};
-const official=body.filter(r=>r[c.county]===county).map(r=>({road:r[c.road],m:stake(r[c.m]),xy:[Number(r[c.x]),Number(r[c.y])],wgs:[Number(r[c.e]),Number(r[c.n])],dir:r[c.dir]||'',date:r[c.date]}));
-if(!official.length)throw Error(`CSV 內沒有「${county}」的資料。`);
+const official=await readOfficialMarkers(file,county);
 
 const site=new URL('../',import.meta.url);
 const loader=createModelLoader({baseURL:new URL('https://example.test/site/'),gzip:false,fetch:async url=>new Response(await readFile(new URL(new URL(url).pathname.replace(/^\/site\//,''),site)))});

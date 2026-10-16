@@ -93,6 +93,12 @@ node scripts/build-shards.mjs data data /tmp/build-report.json
 node scripts/compare-official.mjs 下載的檔案.csv
 ```
 
+以同一份 CSV 更新查詢結果的管養工務段與鄉鎮村里（輸出 `data/admin-areas.json`，網站直接讀取，不需重新打包分片）：
+
+```sh
+node scripts/build-admin-areas.mjs 下載的檔案.csv
+```
+
 報告列出座標不同、新設或已移除的樁，以及官方 TWD97 與 WGS84 互相矛盾的列；兩者矛盾時網站採用 WGS84。
 
 `test-accuracy.mjs` 以原樁座標反查樁號，並抽樣「樁號→位置→樁號」來回比對；也會列出位置與前後樁號矛盾、不直接採用的來源樁。

@@ -157,3 +157,24 @@ button:disabled{opacity:.45;cursor:wait}
 #road-status-text{margin:0;font-size:11px;line-height:1.5}
 #road-status-close{flex:none;width:32px;min-height:32px;background:transparent;color:#476352;font-size:20px;font-weight:400}
 @media(max-width:850px){#load-roads{right:10px;top:56px}#road-status{right:10px;top:100px}}
+
+/* 管養工務段與鄉鎮村里 */
+.result-admin{margin:4px 0 0;font-size:13px;font-weight:600;line-height:1.45;color:#2d5546}
+.result-admin:empty{display:none}
+#show-coordinates[aria-expanded=true]{background:#e5eee1;border-color:#317c69}
+#result-coordinates{white-space:normal;overflow-x:visible;margin:6px 0 0}
+/* Outdoor reading: a larger stake, one row of actions, the map row unchanged. */
+@media(max-width:850px){
+ .result-main{row-gap:0}
+ .route-name{font-size:16px}
+ .mileage{font-size:32px;line-height:1.15}
+ .mileage.unavailable{font-size:22px}
+ .result-kind{font-size:12px}
+ .result-admin{font-size:14px;margin-top:2px}
+ .result-meta{font-size:12px}
+ .result-actions{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin-top:8px}
+ .result-actions:has(>:only-child){grid-template-columns:auto;justify-content:start}
+ .result-actions a,.result-actions button{min-height:38px;padding:5px 4px;font-size:13px;white-space:nowrap}
+ .segment-range{font-size:20px}
+}
+@media(max-width:360px){.mileage{font-size:29px}.result-actions a,.result-actions button{font-size:12px}}

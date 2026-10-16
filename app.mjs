@@ -3,6 +3,7 @@ import {tm,ll,formatM} from './coordinates.mjs';
 import {recognizeInput,offsetLocation,createLiveTracker} from './location-tools.mjs';
 import {exportMapImage} from './map-export.mjs';
 import {recognizeLocations,parseStake} from './segment-parser.mjs';
+import {adminArea,loadAdminAreas} from './admin-areas.mjs';
 const $=id=>document.getElementById(id);
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const formatRoad=road=>/^台\d/.test(road)?`${road}線`:road;
@@ -11,6 +12,19 @@ let ready=false,map,selection,markerLayer,accuracy=null,currentCopy='',sequence=
 let mapSequence=0,roadLines=[],availableRoads=[],roadsBusy=false,roadStatusTimer=null;
 let gpsLayer=null,gpsDot=null,latestGps=null;
 let tracking=null,multiLayer=null,multiItems=[],multiSequence=0,coverageSequence=0,exportNotes=[];
+let adminTable=null;
+// 管養工務段與鄉鎮村里; a segment lists start and end when they differ.
+function areaText(road,from,to=from){
+  const a=adminArea(adminTable,road,from)?.text,b=adminArea(adminTable,road,to)?.text;
+  return a&&b&&a!==b?`${a} → ${b}`:a||b||'';
+}
+const areaMarkup=(road,from,to=from)=>`<p id="result-admin" class="result-admin" data-road="${esc(road)}" data-from="${from}" data-to="${to}">${esc(areaText(road,from,to))}</p>`;
+// The table loads after the first result on a slow connection; fill it in then.
+function refreshArea(){
+  const el=$('result-admin');if(!el||el.textContent)return;
+  const text=areaText(el.dataset.road,Number(el.dataset.from),Number(el.dataset.to));
+  if(text){el.textContent=text;exportNotes.splice(1,0,text);}
+}
 
 function message(text,tone='warning'){
   $('message').textContent=text;
@@ -86,7 +100,8 @@ function showRoadPicker(choices,input,keepView){
   }
 }
 function showResult(r,road,input=null,choices=[],keepView=false){
-  exportNotes=[`${formatRoad(road)} ${mileageLabel(r)}${r.side?' · '+r.side.label+'（側別示意）':''}`,...(r.side?[r.side.note,'導航與複製連結使用原樁號位置，未含側向偏移。']:[])];
+  const areaM=Number.isFinite(r.m)?r.m:nearbyEndpoint(r)?.m,area=Number.isFinite(areaM)?areaText(road,areaM):'';
+  exportNotes=[`${formatRoad(road)} ${mileageLabel(r)}${r.side?' · '+r.side.label+'（側別示意）':''}`,...(area?[area]:[]),...(r.side?[r.side.note,'導航與複製連結使用原樁號位置，未含側向偏移。']:[])];
   if(Number.isFinite(r.m))$('offset-base').value=`${formatRoad(road)} ${formatM(r.m)}`;
   const exact=exactMarker(r),hasMileage=Number.isFinite(r.m),endpoint=nearbyEndpoint(r),point=r.xy,coords=ll(...point),refs=r.refs||[];
   const mileageText=mileageLabel(r);
@@ -102,11 +117,13 @@ function showResult(r,road,input=null,choices=[],keepView=false){
   $('result').innerHTML=`
     <span class="result-label">上次查詢結果</span>
     <div class="result-main"><span class="route-name">${esc(formatRoad(road))}</span><strong class="mileage${hasMileage||endpoint?'':' unavailable'}">${hasMileage?`${exact?'':'<small>約</small>'}${formatM(r.m)}`:endpoint?`<small>最近樁號</small>${formatM(endpoint.m)}`:'暫無樁號'}</strong><span class="result-kind">${kind}</span></div>
+    ${Number.isFinite(areaM)?areaMarkup(road,areaM):''}
     ${meta.length?`<p class="result-meta">${meta.join(' · ')}</p>`:''}
     ${!hasMileage?`<p class="result-unavailable">${endpoint?'顯示最近資料端點的樁號，尚無此位置的里程。':notices[r.notice]||'這條道路目前僅有參考線，尚無可用樁號。'}</p>`:description?`<p class="result-meta">${description}</p>`:''}
     ${choicesMarkup(choices)}
-    <div class="result-actions"><a href="https://www.google.com/maps/dir/?api=1&destination=${coords[1]},${coords[0]}" target="_blank" rel="noopener">開啟導航 ↗</a><button id="copy" type="button">複製連結</button></div>
-    <details class="result-details"><summary>查看座標</summary><p class="coordinates">TWD97 X：${point[0].toFixed(3)}　Y：${point[1].toFixed(3)}</p></details>`;
+    <div class="result-actions"><a href="https://www.google.com/maps/dir/?api=1&destination=${coords[1]},${coords[0]}" target="_blank" rel="noopener">開啟導航 ↗</a><button id="copy" type="button">複製連結</button><button id="show-coordinates" type="button" aria-expanded="false" aria-controls="result-coordinates">查看座標</button></div>
+    <p id="result-coordinates" class="coordinates" hidden>TWD97 X：${point[0].toFixed(3)}　Y：${point[1].toFixed(3)}<br>經緯度：${coords[1].toFixed(6)}, ${coords[0].toFixed(6)}</p>`;
+  $('show-coordinates').onclick=()=>{const open=$('result-coordinates').hidden;$('result-coordinates').hidden=!open;$('show-coordinates').setAttribute('aria-expanded',String(open));};
   $('copy').onclick=async()=>{
     const button=$('copy'),link=currentCopy;
     try{await navigator.clipboard.writeText(link);if(button.isConnected)button.textContent='已複製連結';}
@@ -300,6 +317,7 @@ try{
     const option=document.createElement('option');option.value=road;option.textContent=formatRoad(road);$('road').append(option);$('segment-road').append(option.cloneNode(true));$('coverage-road').append(option.cloneNode(true));
   }
   ready=true;
+  loadAdminAreas().then(table=>{adminTable=table;refreshArea();});
   for(const id of ['road','gps','query','reverse','live-toggle','location-identify','offset-go','coverage-road','segment-road','segment-draw'])$(id).disabled=false;
   message('');
 }catch{message('無法載入道路索引，請重新整理後再試。');}
@@ -346,11 +364,11 @@ async function drawSegment(road,from,to,side){
   const data=await response.json();if(requestId!==sequence)return;
   if(!response.ok)throw Error(data.error||'路段查詢失敗。');
   const r=data.segment;message('');$('idle').hidden=true;$('result').hidden=false;
-  const metres=n=>Math.round(n).toLocaleString('zh-TW');
+  const metres=n=>Math.round(n).toLocaleString('zh-TW'),area=areaText(r.road,r.from,r.to);
   const sideNote=r.side?`<p class="result-meta">${esc(r.side.label)}（側別示意）；${esc(r.side.note)}</p>`:'';
   const warning=r.complete?'沿既有道路線形標示；圖資推估，非現地丈量。':r.parts.length?'部分區間缺少線形或有歧義，僅標示可確認的路段；缺口不連線。':`此區間沒有可用線形。目前此道路的原樁資料範圍為 ${formatM(r.coverage[0])}～${formatM(r.coverage[1])}。`;
-  $('result').innerHTML=`<span class="result-label">里程路段${r.complete?'':' · 未完整標示'}</span><span class="route-name">${esc(formatRoad(r.road))}</span>${sideNote}<p class="segment-range">${formatM(r.from)} → ${formatM(r.to)}</p><div><span class="segment-label">里程差　</span><strong class="segment-length">${metres(r.mileageLength)} 公尺</strong></div><p class="result-meta">${r.complete?'沿線估算長度 '+metres(r.geometryLength)+' 公尺':r.parts.length?'已標示部分沿線長度 '+metres(r.coveredGeometryLength)+' 公尺（非全段）':''}</p><p class="${r.complete?'result-meta':'result-unavailable'}">${warning}</p>${r.gaps.length?`<details class="result-details"><summary>查看未標示區間（${r.gaps.length}）</summary>${r.gaps.slice(0,20).map(g=>`<p>${formatM(g.from)}～${formatM(g.to)}：${esc(g.reason)}</p>`).join('')}${r.gaps.length>20?'<p>另有其他缺口，請縮短範圍查看。</p>':''}</details>`:''}<div class="result-actions"><button id="segment-copy" type="button">複製路段摘要</button></div>`;
-  const summary=`${formatRoad(r.road)} ${formatM(r.from)} 至 ${formatM(r.to)}${r.side?' · '+r.side.label+'（側別示意）':''}\n里程差：${metres(r.mileageLength)} 公尺\n${r.complete?'沿線估算長度：'+metres(r.geometryLength)+' 公尺':'路段尚未完整標示，請確認資料缺口。'}`;
+  $('result').innerHTML=`<span class="result-label">里程路段${r.complete?'':' · 未完整標示'}</span><span class="route-name">${esc(formatRoad(r.road))}</span>${sideNote}<p class="segment-range">${formatM(r.from)} → ${formatM(r.to)}</p>${areaMarkup(r.road,r.from,r.to)}<div><span class="segment-label">里程差　</span><strong class="segment-length">${metres(r.mileageLength)} 公尺</strong></div><p class="result-meta">${r.complete?'沿線估算長度 '+metres(r.geometryLength)+' 公尺':r.parts.length?'已標示部分沿線長度 '+metres(r.coveredGeometryLength)+' 公尺（非全段）':''}</p><p class="${r.complete?'result-meta':'result-unavailable'}">${warning}</p>${r.gaps.length?`<details class="result-details"><summary>查看未標示區間（${r.gaps.length}）</summary>${r.gaps.slice(0,20).map(g=>`<p>${formatM(g.from)}～${formatM(g.to)}：${esc(g.reason)}</p>`).join('')}${r.gaps.length>20?'<p>另有其他缺口，請縮短範圍查看。</p>':''}</details>`:''}<div class="result-actions"><button id="segment-copy" type="button">複製路段摘要</button></div>`;
+  const summary=`${formatRoad(r.road)} ${formatM(r.from)} 至 ${formatM(r.to)}${r.side?' · '+r.side.label+'（側別示意）':''}${area?'\n'+area:''}\n里程差：${metres(r.mileageLength)} 公尺\n${r.complete?'沿線估算長度：'+metres(r.geometryLength)+' 公尺':'路段尚未完整標示，請確認資料缺口。'}`;
   exportNotes=[summary,...(r.side?[r.side.note]:[])];
   $('segment-copy').onclick=async()=>{try{await navigator.clipboard.writeText(summary);$('segment-copy').textContent='已複製摘要';}catch{message('無法自動複製，請選取上方結果文字複製。');}};
   if(map){
