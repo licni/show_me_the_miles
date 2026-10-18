@@ -35,6 +35,10 @@ const cases=[
  ['台27線59K+223 順樁150公尺\n台1線392K+406 逆樁100公尺',['台27 59223->59373','台1 392406->392306']],
  // A rejected number pair must not hide the coordinate after it.
  ['台1線392K+406 22.49,120.62',['台1@392406','緯度 22.49／經度 120.62']],
+ // Labels that contradict the magnitudes are not silently swapped or dropped.
+ ['Y:195183 X:2506266',[],true],
+ ['lat:120.62 lon:22.49',[],true],
+ ['X 195183.575 Y 2506266.517 22.49,120.62',['TWD97 X 195183.575／Y 2506266.517','緯度 22.49／經度 120.62']],
  // Measurements are not stakes.
  ['台1線392K+406 護欄高1.2公尺',['台1@392406']],
  ['台1線392K+406 寬3.5 m',['台1@392406']],

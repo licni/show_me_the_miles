@@ -38,8 +38,11 @@ export function recognizeInput(text,roads){
   else if(b>=120&&b<=121.5&&a>=21.7&&a<=23){xy=tm(b,a);display=`緯度 ${a}／經度 ${b}`;}
   // Explicit labels must agree with the magnitude; do not silently swap X/Y or lat/lon.
   const wrong=(l,v,y)=>l&&(isLat(l)?v>90:isLon(l)?v<90:/^x$/i.test(l)?v<100000:/^y$/i.test(l)?v<2300000:false);
-  // A rejected pair consumes nothing, so 392K+406 22.49,120.62 still finds the coordinate.
-  if(!xy||wrong(labelA,a)||wrong(labelB,b)){pair.lastIndex=m.index+1;continue;}
+  // A pair that is no coordinate consumes nothing, so 392K+406 22.49,120.62 still finds
+  // the coordinate; a labelled pair that contradicts its labels is skipped whole, so
+  // Y:195183 X:2506266 is not read as X/Y with the first label dropped.
+  if(!xy){pair.lastIndex=m.index+1;continue;}
+  if(wrong(labelA,a)||wrong(labelB,b)){pair.lastIndex=m.index+all.length;continue;}
   rest+=s.slice(last,m.index)+' ';last=m.index+all.length;
   const key='xy:'+xy.map(v=>v.toFixed(3)).join(':');if(!coordinates.some(c=>c.key===key))coordinates.push({kind:'coordinate',key,xy,label:display});
  }
