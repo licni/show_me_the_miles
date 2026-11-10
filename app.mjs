@@ -1,18 +1,36 @@
 import {apiFetch} from './pages/client.mjs?v=shards-2';
 import {tm,ll,formatM} from './coordinates.mjs';
 import {recognizeInput,offsetLocation,createLiveTracker} from './location-tools.mjs';
-import {exportMapImage} from './map-export.mjs';
+import {exportMapImage,saveBlob} from './map-export.mjs';
 import {recognizeLocations,parseStake} from './segment-parser.mjs';
 import {adminArea,loadAdminAreas} from './admin-areas.mjs';
+import {formatRoad,locationText,shareUrl,readShare,loadHistory,addHistory,clearHistory} from './share-history.mjs';
 const $=id=>document.getElementById(id);
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const formatRoad=road=>/^台\d/.test(road)?`${road}線`:road;
 const latlng=p=>[p[1],p[0]];
 let ready=false,map,selection,markerLayer,accuracy=null,currentCopy='',sequence=0;
 let mapSequence=0,roadLines=[],availableRoads=[],roadsBusy=false,roadStatusTimer=null;
 let gpsLayer=null,gpsDot=null,latestGps=null;
 let tracking=null,multiLayer=null,multiItems=[],multiSequence=0,coverageSequence=0,exportNotes=[];
 let adminTable=null;
+// Whether the lookup now on screen belongs in the history; map taps and marker taps do not.
+let historyOn=false;
+const historyStore=(()=>{try{return localStorage;}catch{return null;}})();
+const shareLink=target=>shareUrl(location.origin+location.pathname,target);
+async function copyText(button,text,done,fallback){
+  const label=button.dataset.label||(button.dataset.label=button.textContent);
+  try{await navigator.clipboard.writeText(text);if(!button.isConnected)return;button.textContent=done;setTimeout(()=>{button.textContent=label;},2000);}
+  catch{if(button.isConnected)fallback();}
+}
+function showLinkField(link,container){
+  $('share-link')?.remove();
+  const field=document.createElement('input');field.id='share-link';field.readOnly=true;field.setAttribute('aria-label','分享連結');
+  container.append(field);field.value=link;field.focus();field.select();
+  message('請長按下方連結複製，再貼到 LINE 或通訊軟體。');
+}
+function remember(target,label){
+  renderHistory(addHistory(historyStore,{...target,label,at:Date.now()}));
+}
 // 管養工務段與鄉鎮村里; a segment lists start and end when they differ.
 function areaText(road,from,to=from){
   const a=adminArea(adminTable,road,from)?.text,b=adminArea(adminTable,road,to)?.text;
@@ -101,15 +119,18 @@ function showRoadPicker(choices,input,keepView){
 }
 function showResult(r,road,input=null,choices=[],keepView=false){
   const areaM=Number.isFinite(r.m)?r.m:nearbyEndpoint(r)?.m,area=Number.isFinite(areaM)?areaText(road,areaM):'';
-  exportNotes=[`${formatRoad(road)} ${mileageLabel(r)}${r.side?' · '+r.side.label+'（側別示意）':''}`,...(area?[area]:[]),...(r.side?[r.side.note,'導航與複製連結使用原樁號位置，未含側向偏移。']:[])];
+  exportNotes=[`${formatRoad(road)} ${mileageLabel(r)}${r.side?' · '+r.side.label+'（側別示意）':''}`,...(area?[area]:[]),...(r.side?[r.side.note,'導航使用原樁號位置，未含側向偏移。']:[])];
   if(Number.isFinite(r.m))$('offset-base').value=`${formatRoad(road)} ${formatM(r.m)}`;
   const exact=exactMarker(r),hasMileage=Number.isFinite(r.m),endpoint=nearbyEndpoint(r),point=r.xy,coords=ll(...point),refs=r.refs||[];
   const mileageText=mileageLabel(r);
   const notices={gap:'附近樁號資料有缺口，無法確認此處里程。',range:'此處超出里程資料範圍，顯示最近有效資料點。','reference-end':'此處位於參考線端點外，尚無可用樁號。'};
   const {kind,description}=resultPresentation(r,road);
-  currentCopy=`https://www.google.com/maps?q=${coords[1].toFixed(7)},${coords[0].toFixed(7)}`;
+  // A looked-up position reopens as that position; a stake reopens as the stake and its side.
+  const target=input?{q:locationText({kind:'coordinate',xy:input}),...(choices.length>1?{road}:{})}:hasMileage?{q:locationText({kind:'point',road,m:r.m,side:r.side?.direction})}:{q:locationText({kind:'coordinate',xy:point})};
+  currentCopy=shareLink(target);
+  if(historyOn)remember(target,`${formatRoad(road)} ${mileageText}${r.side?'（'+r.side.label+'）':''}`);
   const meta=[];
-  if(r.side)meta.push(esc(r.side.label)+'（側別示意）；'+esc(r.side.note)+' 導航與複製連結仍為原樁號位置。');
+  if(r.side)meta.push(esc(r.side.label)+'（側別示意）；'+esc(r.side.note)+' 導航仍為原樁號位置。');
   if(accuracy!==null)meta.push(`定位精度約 ±${Math.round(accuracy)} 公尺`);
   if(input&&r.d!=null)meta.push(`${r.distanceKind==='endpoint'?'距最近資料端點':r.distanceKind==='mainline-offset'?'距主線對應位置':'水平投影距離'} ${r.d.toFixed(1)} 公尺`);
   $('idle').hidden=true;
@@ -121,18 +142,14 @@ function showResult(r,road,input=null,choices=[],keepView=false){
     ${meta.length?`<p class="result-meta">${meta.join(' · ')}</p>`:''}
     ${!hasMileage?`<p class="result-unavailable">${endpoint?'顯示最近資料端點的樁號，尚無此位置的里程。':notices[r.notice]||'這條道路目前僅有參考線，尚無可用樁號。'}</p>`:description?`<p class="result-meta">${description}</p>`:''}
     ${choicesMarkup(choices)}
-    <div class="result-actions"><a href="https://www.google.com/maps/dir/?api=1&destination=${coords[1]},${coords[0]}" target="_blank" rel="noopener">開啟導航 ↗</a><button id="copy" type="button">複製連結</button><button id="show-coordinates" type="button" aria-expanded="false" aria-controls="result-coordinates">查看座標</button></div>
+    <div class="result-actions"><a href="https://www.google.com/maps/dir/?api=1&destination=${coords[1]},${coords[0]}" target="_blank" rel="noopener">導航 ↗</a><button id="copy" type="button">複製連結</button><button id="copy-text" type="button">複製文字</button><button id="show-coordinates" type="button" aria-expanded="false" aria-controls="result-coordinates">查看座標</button></div>
     <p id="result-coordinates" class="coordinates" hidden>TWD97 X：${point[0].toFixed(3)}　Y：${point[1].toFixed(3)}<br>經緯度：${coords[1].toFixed(6)}, ${coords[0].toFixed(6)}</p>`;
   $('show-coordinates').onclick=()=>{const open=$('result-coordinates').hidden;$('result-coordinates').hidden=!open;$('show-coordinates').setAttribute('aria-expanded',String(open));};
-  $('copy').onclick=async()=>{
-    const button=$('copy'),link=currentCopy;
-    try{await navigator.clipboard.writeText(link);if(button.isConnected)button.textContent='已複製連結';}
-    catch{
-      if(!button.isConnected)return;
-      let field=$('share-link');
-      if(!field){field=document.createElement('input');field.id='share-link';field.readOnly=true;field.setAttribute('aria-label','分享連結');$('result').append(field);}
-      field.value=link;field.focus();field.select();message('請長按下方連結複製，再貼到 LINE 或通訊軟體。');
-    }
+  $('copy').onclick=()=>{const link=currentCopy;return copyText($('copy'),link,'已複製',()=>showLinkField(link,$('result')));};
+  $('copy-text').onclick=()=>{
+    // Read the area at click time; its table can arrive after the result.
+    const lines=[`${formatRoad(road)} ${mileageText}${r.side?'（'+r.side.label+'，側別示意）':''}`,$('result-admin')?.textContent,`經緯度 ${coords[1].toFixed(6)}, ${coords[0].toFixed(6)}`,`TWD97 X ${point[0].toFixed(3)} Y ${point[1].toFixed(3)}`];
+    return copyText($('copy-text'),lines.filter(Boolean).join('\n'),'已複製',()=>message('無法自動複製，請按「查看座標」後選取文字複製。'));
   };
   renderChoices(choices,r,road,input);
   if(map){
@@ -149,8 +166,9 @@ function showResult(r,road,input=null,choices=[],keepView=false){
   }
 }
 
-async function positionQuery(xy,{keepView=false,keepTracking=false,isCurrent=()=>true}={}){
+async function positionQuery(xy,{keepView=false,keepTracking=false,isCurrent=()=>true,record=true,prefer=''}={}){
   if(!keepTracking)stopLiveTracking();
+  historyOn=record;
   const requestId=++sequence;clear({preserveScroll:keepTracking});
   if(!ready){message('查詢服務連線中，請稍候。','busy');return;}
   if(!xy.every(Number.isFinite)||!(xy[0]>100000&&xy[0]<400000&&xy[1]>2300000&&xy[1]<3000000)){
@@ -167,9 +185,11 @@ async function positionQuery(xy,{keepView=false,keepTracking=false,isCurrent=()=
       if(map){dot(xy,'#8b687b','上次查詢位置：暫無可用樁號');if(!keepView)map.setView(latlng(ll(...xy)),Math.max(18,map.getZoom()));}
       return;
     }
-    if(candidates.length>1&&candidates.some(r=>nearbyEndpoint(r)||r.sourceKind==='county-endpoint-estimate'))showRoadPicker(candidates,xy,keepView);
+    // A link or history entry names the road that was chosen among several.
+    const preferred=prefer&&candidates.find(r=>r.road===prefer);
+    if(!preferred&&candidates.length>1&&candidates.some(r=>nearbyEndpoint(r)||r.sourceKind==='county-endpoint-estimate'))showRoadPicker(candidates,xy,keepView);
     else{
-      const first=candidates[0];
+      const first=preferred||candidates[0];
       showResult(first,first.road,xy,candidates,keepView);
     }
     if(accuracy!==null&&accuracy>50)message('目前定位精度較低，請至開闊處重新定位。');
@@ -183,7 +203,7 @@ $('position-form').onsubmit=e=>{
   positionQuery(xy);
 };
 $('mile-form').onsubmit=async (e,side)=>{
-  e.preventDefault();stopLiveTracking();accuracy=null;
+  e.preventDefault();stopLiveTracking();accuracy=null;historyOn=true;
   const requestId=++sequence;clear();document.activeElement?.blur();
   const road=$('road').value;
   if(!road){message('請先選擇要查詢的道路。');return;}
@@ -293,7 +313,7 @@ if(window.L){
     if(!ready)return;accuracy=null;
     const xy=tm(e.latlng.lng,e.latlng.lat);
     $('x').value=xy[0].toFixed(4);$('y').value=xy[1].toFixed(4);
-    document.activeElement?.blur();$('coordinate-entry').open=false;positionQuery(xy,{keepView:map.getZoom()>=18});
+    document.activeElement?.blur();$('coordinate-entry').open=false;positionQuery(xy,{keepView:map.getZoom()>=18,record:false});
   });
   // Panning, zooming and GPS following must never fetch reference lines.
   $('load-roads').disabled=false;
@@ -367,10 +387,13 @@ async function drawSegment(road,from,to,side){
   const metres=n=>Math.round(n).toLocaleString('zh-TW'),area=areaText(r.road,r.from,r.to);
   const sideNote=r.side?`<p class="result-meta">${esc(r.side.label)}（側別示意）；${esc(r.side.note)}</p>`:'';
   const warning=r.complete?'沿既有道路線形標示；圖資推估，非現地丈量。':r.parts.length?'部分區間缺少線形或有歧義，僅標示可確認的路段；缺口不連線。':`此區間沒有可用線形。目前此道路的原樁資料範圍為 ${formatM(r.coverage[0])}～${formatM(r.coverage[1])}。`;
-  $('result').innerHTML=`<span class="result-label">里程路段${r.complete?'':' · 未完整標示'}</span><span class="route-name">${esc(formatRoad(r.road))}</span>${sideNote}<p class="segment-range">${formatM(r.from)} → ${formatM(r.to)}</p>${areaMarkup(r.road,r.from,r.to)}<div><span class="segment-label">里程差　</span><strong class="segment-length">${metres(r.mileageLength)} 公尺</strong></div><p class="result-meta">${r.complete?'沿線估算長度 '+metres(r.geometryLength)+' 公尺':r.parts.length?'已標示部分沿線長度 '+metres(r.coveredGeometryLength)+' 公尺（非全段）':''}</p><p class="${r.complete?'result-meta':'result-unavailable'}">${warning}</p>${r.gaps.length?`<details class="result-details"><summary>查看未標示區間（${r.gaps.length}）</summary>${r.gaps.slice(0,20).map(g=>`<p>${formatM(g.from)}～${formatM(g.to)}：${esc(g.reason)}</p>`).join('')}${r.gaps.length>20?'<p>另有其他缺口，請縮短範圍查看。</p>':''}</details>`:''}<div class="result-actions"><button id="segment-copy" type="button">複製路段摘要</button></div>`;
+  $('result').innerHTML=`<span class="result-label">里程路段${r.complete?'':' · 未完整標示'}</span><span class="route-name">${esc(formatRoad(r.road))}</span>${sideNote}<p class="segment-range">${formatM(r.from)} → ${formatM(r.to)}</p>${areaMarkup(r.road,r.from,r.to)}<div><span class="segment-label">里程差　</span><strong class="segment-length">${metres(r.mileageLength)} 公尺</strong></div><p class="result-meta">${r.complete?'沿線估算長度 '+metres(r.geometryLength)+' 公尺':r.parts.length?'已標示部分沿線長度 '+metres(r.coveredGeometryLength)+' 公尺（非全段）':''}</p><p class="${r.complete?'result-meta':'result-unavailable'}">${warning}</p>${r.gaps.length?`<details class="result-details"><summary>查看未標示區間（${r.gaps.length}）</summary>${r.gaps.slice(0,20).map(g=>`<p>${formatM(g.from)}～${formatM(g.to)}：${esc(g.reason)}</p>`).join('')}${r.gaps.length>20?'<p>另有其他缺口，請縮短範圍查看。</p>':''}</details>`:''}<div class="result-actions"><button id="segment-copy" type="button">複製路段摘要</button><button id="segment-link" type="button">複製連結</button></div>`;
   const summary=`${formatRoad(r.road)} ${formatM(r.from)} 至 ${formatM(r.to)}${r.side?' · '+r.side.label+'（側別示意）':''}${area?'\n'+area:''}\n里程差：${metres(r.mileageLength)} 公尺\n${r.complete?'沿線估算長度：'+metres(r.geometryLength)+' 公尺':'路段尚未完整標示，請確認資料缺口。'}`;
   exportNotes=[summary,...(r.side?[r.side.note]:[])];
-  $('segment-copy').onclick=async()=>{try{await navigator.clipboard.writeText(summary);$('segment-copy').textContent='已複製摘要';}catch{message('無法自動複製，請選取上方結果文字複製。');}};
+  $('segment-copy').onclick=()=>copyText($('segment-copy'),summary,'已複製',()=>message('無法自動複製，請選取上方結果文字複製。'));
+  const target={q:locationText({road,from,to,side})},link=shareLink(target);
+  $('segment-link').onclick=()=>copyText($('segment-link'),link,'已複製',()=>showLinkField(link,$('result')));
+  if(r.parts.length)remember(target,locationLabel({road,from,to,side}));
   if(map){
    const layers=[];
    const display=r.side||r;
@@ -393,7 +416,7 @@ function selectTextLocation(candidate){
  }
  fillSegment(candidate);return drawSegment(candidate.road,candidate.from,candidate.to,candidate.side);
 }
-function identifyText(){
+function identifyText({prefer='',markAll=false}={}){
  const hint=$('location-hint'),list=$('location-candidates');
  if(!ready){hint.textContent='道路清單尚未載入，請稍候。';return;}
  stopLiveTracking();document.activeElement?.blur();
@@ -401,13 +424,34 @@ function identifyText(){
  const {candidates,warnings}=recognizeInput($('location-text').value,availableRoads);
  hint.textContent=[candidates.length?`辨識到 ${candidates.length} 個位置／路段${candidates.length>1||warnings.length?'，請確認後點選。':'。'}`:'未辨識到完整位置，請保留道路名稱與樁號或座標，也可展開「手動選擇」。',...warnings].join('\n');
  $('location-all').hidden=candidates.length<2;$('location-all').onclick=()=>markAllLocations(candidates);
- if(candidates.length===1&&!warnings.length)return selectTextLocation(candidates[0]);
+ if(candidates.length===1&&!warnings.length){
+  const c=candidates[0];
+  if(c.kind==='coordinate'&&prefer){accuracy=null;return positionQuery(c.xy,{prefer});}
+  return selectTextLocation(c);
+ }
  for(const c of candidates){
   const button=document.createElement('button');button.type='button';
   button.textContent=locationLabel(c);
   button.onclick=()=>{for(const b of list.children)b.setAttribute('aria-pressed',String(b===button));return selectTextLocation(c);};list.append(button);
  }
+ if(markAll&&candidates.length>1&&candidates.length<=20)return markAllLocations(candidates);
 }
+// Reopen a shared link or a history entry through the same path as a paste.
+function openShared({q,road}){
+ pendingPaste=null;locationInput.value=q;syncLocationClear();
+ return identifyText({prefer:road,markAll:true});
+}
+function renderHistory(list){
+ $('history-panel').hidden=!list.length;$('history-summary').textContent=`查詢紀錄（${list.length}）`;
+ $('history-list').replaceChildren(...list.map(entry=>{
+  const button=document.createElement('button'),time=document.createElement('span');button.type='button';
+  time.className='history-time';time.textContent=new Date(entry.at).toLocaleString('zh-TW',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit',hour12:false});
+  button.append(entry.label,time);
+  button.onclick=()=>{$('history-panel').open=false;return openShared(entry);};
+  return button;
+ }));
+}
+$('history-clear').onclick=()=>renderHistory(clearHistory(historyStore));
 $('location-form').onsubmit=e=>{e.preventDefault();return identifyText();};
 const locationInput=$('location-text'),locationClear=$('location-clear'),locationHintDefault=$('location-hint').textContent;
 const syncLocationClear=()=>{locationClear.hidden=!locationInput.value;};
@@ -447,12 +491,15 @@ function locationLabel(c){return c.kind==='coordinate'?c.label:`${formatRoad(c.r
 function fitAllLocations(){
  const layers=multiLayer?.getLayers()||[];if(map&&layers.length)map.fitBounds(L.featureGroup(layers).getBounds(),{padding:[40,40],maxZoom:18});
 }
-function clearMultiLocations(){++multiSequence;multiItems=[];multiLayer?.clearLayers();$('multi-list').replaceChildren();$('multi-panel').hidden=true;}
+function clearMultiLocations(){++multiSequence;multiItems=[];multiLayer?.clearLayers();$('multi-list').replaceChildren();$('multi-panel').hidden=true;if($('share-link')?.parentElement===$('multi-panel'))$('share-link').remove();}
 $('multi-clear').onclick=()=>{++sequence;clearMultiLocations();clear();};
 $('multi-fit').onclick=fitAllLocations;
 async function markAllLocations(candidates){
  if(candidates.length>20){message('一次最多同時標記20個位置／路段，請縮短貼上的文字。');return;}
  stopLiveTracking();document.activeElement?.blur();const requestId=++sequence;clear();clearMultiLocations();const batch=multiSequence;
+ historyOn=false;
+ const target={q:candidates.map(locationText).join('\n')},link=shareLink(target);
+ $('multi-link').onclick=()=>copyText($('multi-link'),link,'已複製',()=>showLinkField(link,$('multi-panel')));
  $('multi-panel').hidden=false;$('multi-panel').open=true;
  for(let i=0;i<candidates.length;i++){
   if(batch!==multiSequence||requestId!==sequence)return;
@@ -495,7 +542,9 @@ async function markAllLocations(candidates){
    button.textContent=label+'\n'+notes.join('；');multiItems.push({label,notes});
   }catch(e){if(batch!==multiSequence||requestId!==sequence)return;button.textContent=label+'\n'+e.message;multiItems.push({label,notes:[e.message]});}
  }
- if(batch===multiSequence&&requestId===sequence){$('multi-summary').textContent=`地圖標記（${candidates.length}）`;fitAllLocations();message('已完成地圖標記；無資料或不完整的項目已列明。');}
+ if(batch===multiSequence&&requestId===sequence){$('multi-summary').textContent=`地圖標記（${candidates.length}）`;fitAllLocations();message('已完成地圖標記；無資料或不完整的項目已列明。');
+  remember(target,`${candidates.length} 個位置／路段\n${candidates.slice(0,2).map(locationLabel).join('、')}${candidates.length>2?'…':''}`);
+ }
 }
 $('offset-form').onsubmit=e=>{
  e.preventDefault();try{
@@ -529,7 +578,37 @@ async function saveMapImage(format='jpg'){
  catch(e){message(e.message||'圖片匯出失敗，請稍後重試。');}
  finally{exportBusy=false;$('export-map').disabled=false;$('export-png').disabled=false;$('export-summary').textContent='匯出 ▾';}
 }
+// Phones hand the picture to the system share sheet; a download would be hard to find there.
+let pendingShare=null,pendingShareTimer=null;
+function resetShare(){pendingShare=null;clearTimeout(pendingShareTimer);$('share-map').textContent='分享圖片';}
+async function shareFile(file){
+ try{await navigator.share({files:[file],title:'道路位置示意圖'});return 'done';}
+ catch(e){return e.name==='AbortError'?'cancelled':e.name==='NotAllowedError'?'needs-tap':'failed';}
+}
+$('share-map').onclick=async()=>{
+ if(exportBusy)return;
+ if(pendingShare){
+  const file=pendingShare;resetShare();
+  if(!['done','cancelled'].includes(await shareFile(file))){saveBlob(file,file.name);message('無法開啟分享，已改為下載圖片。');}
+  return;
+ }
+ exportBusy=true;$('share-map').disabled=true;$('share-map').textContent='產生中…';stopLiveTracking();
+ try{
+  const blob=await exportMapImage({map,groups:[markerLayer,multiLayer,selection],notes:[...exportNotes,...multiItems.map(i=>i.label+'；'+i.notes.join('；'))],format:'jpg',scale:2,download:false});
+  const file=new File([blob],'道路位置示意圖.jpg',{type:'image/jpeg'});
+  if(!navigator.canShare?.({files:[file]})){saveBlob(file,file.name);message('此瀏覽器不支援分享圖片，已改為下載，請查看下載項目。');return;}
+  const outcome=await shareFile(file);
+  // Some browsers only open the share sheet straight from a tap, and making the picture took too long.
+  if(outcome==='needs-tap'){pendingShare=file;pendingShareTimer=setTimeout(resetShare,60000);message('圖片已產生，請按地圖上的「點此分享」。','busy');}
+  else if(outcome==='failed'){saveBlob(file,file.name);message('無法開啟分享，已改為下載圖片。');}
+ }catch(e){message(e.message||'圖片產生失敗，請稍後重試。');}
+ finally{exportBusy=false;$('share-map').disabled=false;$('share-map').textContent=pendingShare?'點此分享':'分享圖片';}
+};
+map?.on('movestart',()=>{if(pendingShare)resetShare();});
 $('export-map').onclick=()=>saveMapImage();
 $('export-png').onclick=()=>saveMapImage('png');
 $('export-menu').onkeydown=e=>{if(e.key==='Escape'){$('export-menu').open=false;$('export-summary').focus();}};
 document.addEventListener?.('click',e=>{if(!e.target.closest?.('#export-menu'))$('export-menu').open=false;});
+renderHistory(loadHistory(historyStore));
+const shared=ready&&readShare(location.search);
+if(shared)openShared(shared);
