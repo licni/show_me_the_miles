@@ -17,6 +17,7 @@
 | `data/manifest.json` | 道路清單、檔案資訊與空間索引 |
 | `data/` | 道路索引、查詢分片、gzip 與參考線資料 |
 | `scripts/` | 資料打包與查詢比對工具 |
+| `.github/workflows/` | PR 合併後自動刪除分支 |
 | `vendor/` | Leaflet 與授權文件 |
 
 ## 資料載入
@@ -113,4 +114,10 @@ node scripts/build-admin-areas.mjs 下載的檔案.csv
 
 檢查範圍依修改內容決定：計算變更比對樁號、交會候選、端點與缺口結果；資料變更檢查 JSON／gzip 內容、雜湊、索引與跨片查詢；介面變更檢查電腦與手機操作。文件修改檢查文字與連結即可。
 
-發布後以 GitHub Pages 部署結果及實際網址確認上線狀態。此儲存庫與 Cloudflare 版本分開維護。
+發布後以 GitHub Pages 部署結果及實際網址確認上線狀態。
+
+## 分支清理
+
+`.github/workflows/cleanup-merged-branches.yml` 會在 PR 合併後自動刪除來源分支。分支在合併後又有新的提交，或還有其他開啟中的 PR 時會保留。
+
+需要一次清掉舊分支時，到 GitHub 的 Actions 頁面手動執行「清理已合併分支」：它會刪除已有合併 PR 且之後沒有新提交的分支，以及內容已全部在預設分支裡的分支；預設分支、受保護分支與有開啟中 PR 的分支不會刪除。此儲存庫與 Cloudflare 版本分開維護。

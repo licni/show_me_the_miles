@@ -1,0 +1,65 @@
+# 清理已合併的分支：PR 合併後自動刪除來源分支；也可手動執行，掃描並刪除所有已合併的分支。
+name: 清理已合併分支
+
+on:
+  pull_request:
+    types: [closed]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: read
+
+jobs:
+  delete-merged-branch:
+    name: 刪除剛合併的分支
+    # Forks keep their own branches; only branches in this repository are removed.
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.merged == true &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - name: 刪除分支
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          BRANCH: ${{ github.event.pull_request.head.ref }}
+          MERGED_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          if [ "$BRANCH" = "$DEFAULT_BRANCH" ]; then echo "預設分支不刪除。"; exit 0; fi
+          current=$(gh api "repos/$REPO/git/ref/heads/$BRANCH" --jq .object.sha 2>/dev/null || true)
+          if [ -z "$current" ]; then echo "$BRANCH 已不存在。"; exit 0; fi
+          # Commits pushed after the merge are not in the default branch yet.
+          if [ "$current" != "$MERGED_SHA" ]; then echo "$BRANCH 在合併後有新的提交，保留。"; exit 0; fi
+          open=$(gh pr list --repo "$REPO" --head "$BRANCH" --state open --json number --jq length)
+          if [ "$open" != "0" ]; then echo "$BRANCH 還有開啟中的 PR，保留。"; exit 0; fi
+          gh api -X DELETE "repos/$REPO/git/refs/heads/$BRANCH"
+          echo "已刪除 $BRANCH。"
+
+  sweep:
+    name: 掃描並刪除所有已合併的分支
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - name: 掃描分支
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          gh api "repos/$REPO/branches" --paginate --jq '.[] | select(.protected | not) | "\(.name)\t\(.commit.sha)"' |
+          while IFS=$'\t' read -r name sha; do
+            if [ "$name" = "$DEFAULT_BRANCH" ]; then continue; fi
+            open=$(gh pr list --repo "$REPO" --head "$name" --state open --json number --jq length)
+            if [ "$open" != "0" ]; then echo "保留 $name：有開啟中的 PR。"; continue; fi
+            # Merged means: a merged PR ended at this exact commit, or the branch has nothing the default branch lacks.
+            merged=$(gh pr list --repo "$REPO" --head "$name" --state merged --limit 100 --json headRefOid --jq "[.[] | select(.headRefOid == \"$sha\")] | length")
+            ahead=$(gh api "repos/$REPO/compare/$DEFAULT_BRANCH...$name" --jq .ahead_by 2>/dev/null || echo unknown)
+            if [ "$merged" != "0" ] || [ "$ahead" = "0" ]; then
+              gh api -X DELETE "repos/$REPO/git/refs/heads/$name" && echo "已刪除 $name。"
+            else
+              echo "保留 $name：有尚未合併的提交。"
+            fi
+          done
