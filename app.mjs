@@ -4,11 +4,11 @@ import {recognizeInput,offsetLocation,createLiveTracker} from './location-tools.
 import {exportMapImage,saveBlob} from './map-export.mjs';
 import {recognizeLocations,parseStake} from './segment-parser.mjs';
 import {adminArea,loadAdminAreas} from './admin-areas.mjs';
-import {formatRoad,locationText,shareUrl,readShare,loadHistory,addHistory,clearHistory} from './share-history.mjs';
+import {formatRoad,targetText,shareUrl,readShare,loadHistory,addHistory,clearHistory} from './share-history.mjs?v=2';
 const $=id=>document.getElementById(id);
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const latlng=p=>[p[1],p[0]];
-let ready=false,map,selection,markerLayer,accuracy=null,currentCopy='',sequence=0;
+let ready=false,map,selection,markerLayer,accuracy=null,sequence=0;
 let mapSequence=0,roadLines=[],availableRoads=[],roadsBusy=false,roadStatusTimer=null;
 let gpsLayer=null,gpsDot=null,latestGps=null;
 let tracking=null,multiLayer=null,multiItems=[],multiSequence=0,coverageSequence=0,exportNotes=[];
@@ -17,6 +17,8 @@ let adminTable=null;
 let historyOn=false;
 const historyStore=(()=>{try{return localStorage;}catch{return null;}})();
 const shareLink=target=>shareUrl(location.origin+location.pathname,target);
+// What「複製連結」puts on the clipboard: a line a person can read, then the link.
+const shareText=(title,link)=>`${title}\n${link}`;
 async function copyText(button,text,done,fallback){
   const label=button.dataset.label||(button.dataset.label=button.textContent);
   try{await navigator.clipboard.writeText(text);if(!button.isConnected)return;button.textContent=done;setTimeout(()=>{button.textContent=label;},2000);}
@@ -29,7 +31,7 @@ function showLinkField(link,container){
   message('請長按下方連結複製，再貼到 LINE 或通訊軟體。');
 }
 function remember(target,label){
-  renderHistory(addHistory(historyStore,{...target,label,at:Date.now()}));
+  renderHistory(addHistory(historyStore,{q:targetText(target),...(target.road?{road:target.road}:{}),label,at:Date.now()}));
 }
 // 管養工務段與鄉鎮村里; a segment lists start and end when they differ.
 function areaText(road,from,to=from){
@@ -51,7 +53,7 @@ function message(text,tone='warning'){
   $('idle').hidden=!!text||!$('result').hidden;
 }
 function clear({preserveScroll=false}={}){
-  currentCopy='';exportNotes=[];
+  exportNotes=[];
   $('result').hidden=true;
   $('result').replaceChildren();
   selection?.clearLayers();
@@ -105,7 +107,6 @@ function renderChoices(choices,selectedResult,road,input){
   }
 }
 function showRoadPicker(choices,input,keepView){
-  currentCopy='';
   $('idle').hidden=true;
   $('result').hidden=false;
   $('result').innerHTML=`<span class="result-label">上次查詢結果</span><div class="result-main"><strong class="mileage">請選擇道路</strong></div><p class="result-meta">附近有不同道路，請選擇要查詢的道路。</p>${choicesMarkup(choices)}`;
@@ -126,9 +127,9 @@ function showResult(r,road,input=null,choices=[],keepView=false){
   const notices={gap:'附近樁號資料有缺口，無法確認此處里程。',range:'此處超出里程資料範圍，顯示最近有效資料點。','reference-end':'此處位於參考線端點外，尚無可用樁號。'};
   const {kind,description}=resultPresentation(r,road);
   // A looked-up position reopens as that position; a stake reopens as the stake and its side.
-  const target=input?{q:locationText({kind:'coordinate',xy:input}),...(choices.length>1?{road}:{})}:hasMileage?{q:locationText({kind:'point',road,m:r.m,side:r.side?.direction})}:{q:locationText({kind:'coordinate',xy:point})};
-  currentCopy=shareLink(target);
-  if(historyOn)remember(target,`${formatRoad(road)} ${mileageText}${r.side?'（'+r.side.label+'）':''}`);
+  const target=input?{items:[{kind:'coordinate',xy:input}],...(choices.length>1?{road}:{})}:{items:[hasMileage?{kind:'point',road,m:r.m,side:r.side?.direction}:{kind:'coordinate',xy:point}]};
+  const title=`${formatRoad(road)} ${mileageText}${r.side?'（'+r.side.label+'）':''}`,link=shareLink(target);
+  if(historyOn)remember(target,title);
   const meta=[];
   if(r.side)meta.push(esc(r.side.label)+'（側別示意）；'+esc(r.side.note)+' 導航仍為原樁號位置。');
   if(accuracy!==null)meta.push(`定位精度約 ±${Math.round(accuracy)} 公尺`);
@@ -145,7 +146,7 @@ function showResult(r,road,input=null,choices=[],keepView=false){
     <div class="result-actions"><a href="https://www.google.com/maps/dir/?api=1&destination=${coords[1]},${coords[0]}" target="_blank" rel="noopener">導航 ↗</a><button id="copy" type="button">複製連結</button><button id="copy-text" type="button">複製文字</button><button id="show-coordinates" type="button" aria-expanded="false" aria-controls="result-coordinates">查看座標</button></div>
     <p id="result-coordinates" class="coordinates" hidden>TWD97 X：${point[0].toFixed(3)}　Y：${point[1].toFixed(3)}<br>經緯度：${coords[1].toFixed(6)}, ${coords[0].toFixed(6)}</p>`;
   $('show-coordinates').onclick=()=>{const open=$('result-coordinates').hidden;$('result-coordinates').hidden=!open;$('show-coordinates').setAttribute('aria-expanded',String(open));};
-  $('copy').onclick=()=>{const link=currentCopy;return copyText($('copy'),link,'已複製',()=>showLinkField(link,$('result')));};
+  $('copy').onclick=()=>copyText($('copy'),shareText(title,link),'已複製',()=>showLinkField(link,$('result')));
   $('copy-text').onclick=()=>{
     // Read the area at click time; its table can arrive after the result.
     const lines=[`${formatRoad(road)} ${mileageText}${r.side?'（'+r.side.label+'，側別示意）':''}`,$('result-admin')?.textContent,`經緯度 ${coords[1].toFixed(6)}, ${coords[0].toFixed(6)}`,`TWD97 X ${point[0].toFixed(3)} Y ${point[1].toFixed(3)}`];
@@ -391,9 +392,9 @@ async function drawSegment(road,from,to,side){
   const summary=`${formatRoad(r.road)} ${formatM(r.from)} 至 ${formatM(r.to)}${r.side?' · '+r.side.label+'（側別示意）':''}${area?'\n'+area:''}\n里程差：${metres(r.mileageLength)} 公尺\n${r.complete?'沿線估算長度：'+metres(r.geometryLength)+' 公尺':'路段尚未完整標示，請確認資料缺口。'}`;
   exportNotes=[summary,...(r.side?[r.side.note]:[])];
   $('segment-copy').onclick=()=>copyText($('segment-copy'),summary,'已複製',()=>message('無法自動複製，請選取上方結果文字複製。'));
-  const target={q:locationText({road,from,to,side})},link=shareLink(target);
-  $('segment-link').onclick=()=>copyText($('segment-link'),link,'已複製',()=>showLinkField(link,$('result')));
-  if(r.parts.length)remember(target,locationLabel({road,from,to,side}));
+  const target={items:[{road,from,to,side}]},link=shareLink(target),title=locationLabel({road,from,to,side});
+  $('segment-link').onclick=()=>copyText($('segment-link'),shareText(title,link),'已複製',()=>showLinkField(link,$('result')));
+  if(r.parts.length)remember(target,title);
   if(map){
    const layers=[];
    const display=r.side||r;
@@ -498,8 +499,8 @@ async function markAllLocations(candidates){
  if(candidates.length>20){message('一次最多同時標記20個位置／路段，請縮短貼上的文字。');return;}
  stopLiveTracking();document.activeElement?.blur();const requestId=++sequence;clear();clearMultiLocations();const batch=multiSequence;
  historyOn=false;
- const target={q:candidates.map(locationText).join('\n')},link=shareLink(target);
- $('multi-link').onclick=()=>copyText($('multi-link'),link,'已複製',()=>showLinkField(link,$('multi-panel')));
+ const target={items:candidates},link=shareLink(target);
+ $('multi-link').onclick=()=>copyText($('multi-link'),shareText(candidates.map((c,i)=>`${i+1}. ${locationLabel(c)}`).join('\n'),link),'已複製',()=>showLinkField(link,$('multi-panel')));
  $('multi-panel').hidden=false;$('multi-panel').open=true;
  for(let i=0;i<candidates.length;i++){
   if(batch!==multiSequence||requestId!==sequence)return;
