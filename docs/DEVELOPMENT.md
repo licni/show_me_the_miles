@@ -11,6 +11,7 @@
 | `coordinates.mjs` | 座標轉換 |
 | `location-tools.mjs`、`segment-parser.mjs` | 位置文字、樁號與路段辨識 |
 | `map-export.mjs` | 地圖圖片匯出 |
+| `share-history.mjs` | 分享連結與查詢紀錄 |
 | `pages/` | 背景查詢、資料載入與快取 |
 | `engine/` | 里程計算、道路候選與路段處理 |
 | `data/manifest.json` | 道路清單、檔案資訊與空間索引 |
@@ -74,6 +75,7 @@ node scripts/test-shards.mjs ../previous-release
 
 ```sh
 node scripts/test-parser.mjs
+node scripts/test-share.mjs
 node scripts/test-accuracy.mjs
 ```
 
@@ -100,6 +102,8 @@ node scripts/build-admin-areas.mjs 下載的檔案.csv
 ```
 
 報告列出座標不同、新設或已移除的樁，以及官方 TWD97 與 WGS84 互相矛盾的列；兩者矛盾時網站採用 WGS84。
+
+`test-share.mjs` 檢查每條道路的單點、路段與側別經分享連結後能辨識回同一位置，以及查詢紀錄的排序、去重與筆數上限。分享連結與查詢紀錄都以 `recognizeInput` 讀得回的文字保存位置，修改文字辨識規則後需一併執行。
 
 `test-accuracy.mjs` 以原樁座標反查樁號，並抽樣「樁號→位置→樁號」來回比對；也會列出位置與前後樁號矛盾、不直接採用的來源樁。
 

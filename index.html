@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#163e3d">
   <title>SHOW ME THE MILESTONE 樁號查詢</title>
   <link rel="stylesheet" href="vendor/leaflet.css">
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="style.css?v=2026-11-10">
 </head>
 <body>
   <header>
@@ -40,6 +40,11 @@
         <p id="location-hint" class="hint" role="status">貼上即辨識；單樁定位、起迄標段；順逆樁未附距離時表示側別。</p>
         <button id="location-all" class="secondary" hidden>全部標記在地圖</button>
         <div id="location-candidates" class="alternatives"></div>
+        <details id="history-panel" hidden>
+          <summary id="history-summary">查詢紀錄</summary>
+          <div id="history-list" class="alternatives"></div>
+          <div class="form-bottom"><span class="hint">只存在這個瀏覽器，最多 20 筆；地圖點選不列入。</span><button id="history-clear" type="button">清除紀錄</button></div>
+        </details>
         <details id="location-examples">
           <summary>可以貼哪些寫法？</summary>
           <p>台27線59K+223 或 台27 59.223：定位單一樁號。</p>
@@ -98,7 +103,7 @@
         </details>
         <details id="multi-panel" hidden>
           <summary id="multi-summary">地圖標記</summary>
-          <div class="compact-actions"><button id="multi-fit" type="button">查看全部</button><button id="multi-clear" type="button">清除標記</button></div>
+          <div class="compact-actions"><button id="multi-fit" type="button">查看全部</button><button id="multi-link" type="button">複製連結</button><button id="multi-clear" type="button">清除標記</button></div>
           <div id="multi-list" class="alternatives"></div>
         </details>
         <details class="extra-tool" id="coverage-tool">
@@ -126,11 +131,12 @@
           <button id="export-png" type="button">PNG（無損）</button>
         </div>
       </details>
+      <button id="share-map" type="button">分享圖片</button>
       <button id="home" title="回到屏東全覽">全覽</button>
     </section>
   </main>
   <footer>Designed by Super GG</footer>
   <script src="vendor/leaflet.js"></script>
-  <script type="module" src="app.mjs?v=shards-2"></script>
+  <script type="module" src="app.mjs?v=2026-11-10"></script>
 </body>
 </html>

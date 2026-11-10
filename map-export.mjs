@@ -2,9 +2,13 @@ function loadImage(src){return new Promise((resolve,reject)=>{const img=new Imag
 export function wrapText(ctx,text,width){
  const rows=[];let row='';for(const char of String(text)){if(char==='\n'||(row&&ctx.measureText(row+char).width>width)){rows.push(row);row=char==='\n'?'':char;}else row+=char;}if(row)rows.push(row);return rows;
 }
-export async function exportMapImage({map,groups,notes=[],document:doc=document,download=true,format='jpg'}){
+export function saveBlob(blob,name,doc=document){
+ const a=doc.createElement('a'),url=URL.createObjectURL(blob);a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),60000);
+}
+// scale defaults to 1 for JPG and 2 for PNG; a phone's small map needs 2 to stay readable.
+export async function exportMapImage({map,groups,notes=[],document:doc=document,download=true,format='jpg',scale:requestedScale}){
  if(!['jpg','png'].includes(format))throw Error('請選擇 JPG 或 PNG 格式。');
- const mime=format==='jpg'?'image/jpeg':'image/png',scale=format==='jpg'?1:2;
+ const mime=format==='jpg'?'image/jpeg':'image/png',scale=requestedScale||(format==='jpg'?1:2);
  if(!map)throw Error('地圖尚未載入。');
  map.stop();let loading=false;map.eachLayer(layer=>{if(layer.isLoading?.())loading=true;});if(loading)throw Error('底圖尚未完整載入，請稍後再匯出。');
  const container=map.getContainer(),rect=container.getBoundingClientRect(),width=Math.round(rect.width),height=Math.round(rect.height);
@@ -52,7 +56,7 @@ export async function exportMapImage({map,groups,notes=[],document:doc=document,
  for(const credit of credits){ctx.fillText(credit,16,y);y+=18;}
  const blob=await new Promise((resolve,reject)=>{try{canvas.toBlob(b=>b?resolve(b):reject(Error('無法產生圖片。')),mime,format==='jpg'?.9:undefined);}catch{reject(Error('底圖未允許匯出，請切換街道圖後重試。'));}});
  if(blob.type!==mime)throw Error('此瀏覽器無法產生所選圖片格式，請改選 PNG。');
- if(download){const a=doc.createElement('a'),url=URL.createObjectURL(blob);a.href=url;a.download=`道路位置示意圖.${format}`;a.click();setTimeout(()=>URL.revokeObjectURL(url),60000);}
+ if(download)saveBlob(blob,`道路位置示意圖.${format}`,doc);
  return blob;
 }
 
