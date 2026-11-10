@@ -409,7 +409,15 @@ function identifyText(){
  }
 }
 $('location-form').onsubmit=e=>{e.preventDefault();return identifyText();};
-const locationInput=$('location-text');
+const locationInput=$('location-text'),locationClear=$('location-clear'),locationHintDefault=$('location-hint').textContent;
+const syncLocationClear=()=>{locationClear.hidden=!locationInput.value;};
+locationClear.onclick=()=>{
+ stopLiveTracking();++sequence;pendingPaste=null;clear({preserveScroll:true});
+ locationInput.value='';syncLocationClear();
+ $('location-all').hidden=true;$('location-candidates').replaceChildren();
+ $('location-hint').textContent=locationHintDefault;
+ locationInput.focus();
+};
 let pendingPaste=null;
 locationInput.onpaste=()=>{
  const paste={sequence:null};pendingPaste=paste;
@@ -417,7 +425,7 @@ locationInput.onpaste=()=>{
  setTimeout(()=>{if(pendingPaste!==paste)return;pendingPaste=null;if(paste.sequence===sequence)identifyText();},0);
 };
 locationInput.oninput=e=>{
- stopLiveTracking();++sequence;clear({preserveScroll:true});
+ syncLocationClear();stopLiveTracking();++sequence;clear({preserveScroll:true});
  if(e?.inputType==='insertFromPaste'&&pendingPaste)pendingPaste.sequence=sequence;
  else pendingPaste=null;
  $('location-all').hidden=true;$('location-candidates').replaceChildren();

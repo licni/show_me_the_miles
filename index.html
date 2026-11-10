@@ -31,7 +31,10 @@
         </div>
         <form id="location-form">
           <label for="location-text">貼上位置、樁號或路段</label>
+          <div class="location-input">
           <textarea id="location-text" rows="3" maxlength="12000" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="search" aria-describedby="location-hint" placeholder="台27線59K+223 順樁150公尺&#10;縣185 34.544 到 35.200&#10;或貼座標 22.49,120.62；可含前後敘述"></textarea>
+          <button id="location-clear" type="button" aria-label="清除輸入內容" title="清除輸入內容" hidden>×</button>
+          </div>
           <button id="location-identify" class="primary" disabled>辨識並定位</button>
         </form>
         <p id="location-hint" class="hint" role="status">貼上即辨識；單樁定位、起迄標段；順逆樁未附距離時表示側別。</p>
