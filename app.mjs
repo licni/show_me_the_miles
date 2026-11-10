@@ -120,7 +120,7 @@ function showRoadPicker(choices,input,keepView){
 }
 function showResult(r,road,input=null,choices=[],keepView=false){
   const areaM=Number.isFinite(r.m)?r.m:nearbyEndpoint(r)?.m,area=Number.isFinite(areaM)?areaText(road,areaM):'';
-  exportNotes=[`${formatRoad(road)} ${mileageLabel(r)}${r.side?' · '+r.side.label+'（側別示意）':''}`,...(area?[area]:[]),...(r.side?[r.side.note,'導航使用原樁號位置，未含側向偏移。']:[])];
+  exportNotes=[`${formatRoad(road)} ${mileageLabel(r)}${r.side?' · '+r.side.label+'（側別示意）':''}`,...(area?[area]:[]),...(r.side?[r.side.note,'導航與複製連結使用原樁號位置，未含側向偏移。']:[])];
   if(Number.isFinite(r.m))$('offset-base').value=`${formatRoad(road)} ${formatM(r.m)}`;
   const exact=exactMarker(r),hasMileage=Number.isFinite(r.m),endpoint=nearbyEndpoint(r),point=r.xy,coords=ll(...point),refs=r.refs||[];
   const mileageText=mileageLabel(r);
@@ -128,10 +128,11 @@ function showResult(r,road,input=null,choices=[],keepView=false){
   const {kind,description}=resultPresentation(r,road);
   // A looked-up position reopens as that position; a stake reopens as the stake and its side.
   const target=input?{items:[{kind:'coordinate',xy:input}],...(choices.length>1?{road}:{})}:{items:[hasMileage?{kind:'point',road,m:r.m,side:r.side?.direction}:{kind:'coordinate',xy:point}]};
-  const title=`${formatRoad(road)} ${mileageText}${r.side?'（'+r.side.label+'）':''}`,link=shareLink(target);
+  // 「複製連結」gives a Google Maps pin, which opens the map without starting navigation.
+  const title=`${formatRoad(road)} ${mileageText}${r.side?'（'+r.side.label+'）':''}`,link=`https://www.google.com/maps?q=${coords[1].toFixed(6)},${coords[0].toFixed(6)}`;
   if(historyOn)remember(target,title);
   const meta=[];
-  if(r.side)meta.push(esc(r.side.label)+'（側別示意）；'+esc(r.side.note)+' 導航仍為原樁號位置。');
+  if(r.side)meta.push(esc(r.side.label)+'（側別示意）；'+esc(r.side.note)+' 導航與複製連結仍為原樁號位置。');
   if(accuracy!==null)meta.push(`定位精度約 ±${Math.round(accuracy)} 公尺`);
   if(input&&r.d!=null)meta.push(`${r.distanceKind==='endpoint'?'距最近資料端點':r.distanceKind==='mainline-offset'?'距主線對應位置':'水平投影距離'} ${r.d.toFixed(1)} 公尺`);
   $('idle').hidden=true;
@@ -143,7 +144,7 @@ function showResult(r,road,input=null,choices=[],keepView=false){
     ${meta.length?`<p class="result-meta">${meta.join(' · ')}</p>`:''}
     ${!hasMileage?`<p class="result-unavailable">${endpoint?'顯示最近資料端點的樁號，尚無此位置的里程。':notices[r.notice]||'這條道路目前僅有參考線，尚無可用樁號。'}</p>`:description?`<p class="result-meta">${description}</p>`:''}
     ${choicesMarkup(choices)}
-    <div class="result-actions"><a href="https://www.google.com/maps/dir/?api=1&destination=${coords[1]},${coords[0]}" target="_blank" rel="noopener">導航 ↗</a><button id="copy" type="button">複製連結</button><button id="copy-text" type="button">複製文字</button><button id="show-coordinates" type="button" aria-expanded="false" aria-controls="result-coordinates">查看座標</button></div>
+    <div class="result-actions"><a href="https://www.google.com/maps/dir/?api=1&destination=${coords[1]},${coords[0]}" target="_blank" rel="noopener">導航 ↗</a><button id="copy" type="button">複製連結</button><button id="copy-text" type="button">地點座標</button><button id="show-coordinates" type="button" aria-expanded="false" aria-controls="result-coordinates">查看座標</button></div>
     <p id="result-coordinates" class="coordinates" hidden>TWD97 X：${point[0].toFixed(3)}　Y：${point[1].toFixed(3)}<br>經緯度：${coords[1].toFixed(6)}, ${coords[0].toFixed(6)}</p>`;
   $('show-coordinates').onclick=()=>{const open=$('result-coordinates').hidden;$('result-coordinates').hidden=!open;$('show-coordinates').setAttribute('aria-expanded',String(open));};
   $('copy').onclick=()=>copyText($('copy'),shareText(title,link),'已複製',()=>showLinkField(link,$('result')));
